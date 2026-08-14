@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { delimiter, dirname, join } from 'node:path'
@@ -31,6 +31,8 @@ const ptyStreamExpected = join(ptyScenarioDir, 'stream-json.expected.jsonl')
 const ptyConfigPath = fileURLToPath(new URL('../pty.cordis.snapshot.yml', import.meta.url))
 const goalScenarioDir = join(snapshotsDir, 'goal-tools')
 const goalConfigPath = fileURLToPath(new URL('../goal.cordis.snapshot.yml', import.meta.url))
+const pentestScenarioDir = join(snapshotsDir, 'pentest-tools')
+const pentestConfigPath = fileURLToPath(new URL('../pentest.cordis.snapshot.yml', import.meta.url))
 const retryScenarioDir = join(snapshotsDir, 'provider-retry')
 const retryConfigPath = fileURLToPath(new URL('../retry.cordis.snapshot.yml', import.meta.url))
 const compactionScenarioDir = join(snapshotsDir, 'compaction-recovery')
@@ -176,6 +178,34 @@ function normalizeGoalStream(rawStdout: string, cwd: string): string {
   return parseJsonl(normalizeHeadlessStream(rawStdout, cwd))
     .map(record => JSON.stringify(normalizeGoalTimestamps(record)))
     .join('\n') + '\n'
+}
+
+/** Zero ISO-string `createdAt`/`updatedAt` values inside rendered finding JSON. */
+function normalizeFindingTimestamps(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value.replace(/("(?:createdAt|updatedAt)":)\s*"[^"]+"/g, '$1"0"')
+  }
+  if (Array.isArray(value)) return value.map(normalizeFindingTimestamps)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      ['createdAt', 'updatedAt'].includes(key) && typeof item === 'string'
+        ? '0'
+        : normalizeFindingTimestamps(item),
+    ]))
+  }
+  return value
+}
+
+/** Normalize the stream's finding timestamps after the shared scrubbers. */
+function normalizePentestStream(rawStdout: string, cwd: string): string {
+  return parseJsonl(normalizeHeadlessStream(rawStdout, cwd))
+    .map(record => JSON.stringify(normalizeFindingTimestamps(record)))
+    .join('\n')
+    // The docx embeds creation timestamps and a random media file name, so the
+    // written byte count varies between runs; pin the count in the transcript.
+    .replace(/（\d+ 字节，共 \d+ 条漏洞）/g, '（{{bytes}} 字节，共 {{findingCount}} 条漏洞）')
+    + '\n'
 }
 
 async function scenarioPrompt(dir: string, label: string): Promise<string> {
@@ -699,6 +729,47 @@ describe('headless stream-json snapshots', () => {
     const normalized = normalizeGoalStream(result.stdout, runCwd)
     if (refreshing) await writeFile(streamExpected, normalized)
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it('replays the pentest findings and report flow through the one-shot app', async () => {
+    const prompt = await scenarioPrompt(pentestScenarioDir, 'pentest-tools')
+    const streamExpected = join(pentestScenarioDir, 'stream-json.expected.jsonl')
+    let runCwd = ''
+    const result = await runLoaderSmoke({
+      label: 'pentest findings/report headless stream-json snapshot',
+      tempDirPrefix: 'headless-snapshot-pentest-tools-',
+      binScript,
+      libBinScript: binScript,
+      configPath: pentestConfigPath,
+      binArgs: [pentestConfigPath, prompt],
+      tsconfigPath,
+      env: {
+        DSH_SNAPSHOT: 'replay',
+        DSH_SNAPSHOT_FILE: join(pentestScenarioDir, 'session.jsonl'),
+        DSH_SNAPSHOT_OVERRIDE: join(pentestScenarioDir, 'replay.override.json'),
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
+      prepare: (cwd) => { runCwd = cwd },
+      inspect: async (cwd) => {
+        const logs = await persistedLogs(cwd)
+        expect(logs).toHaveLength(1)
+        const records = parseJsonl(logs[0]?.content ?? '')
+        const calls = records.filter(record => record.type === 'tool/call')
+          .map(record => (record.data as JsonObject | undefined)?.name)
+        expect(calls).toEqual(['findings_create', 'report_generate'])
+        expect(logs[0]?.content ?? '').toContain('SSH 端口对外开放')
+        // report_generate writes the Word report into the one-shot app's cwd.
+        expect(logs[0]?.content ?? '').toContain('pentest-report.docx')
+        const reportInfo = await stat(join(cwd, 'pentest-report.docx'))
+        expect(reportInfo.size).toBeGreaterThan(0)
+      },
+    })
+
+    expect(result.stderr).toBe('')
+    const normalized = normalizePentestStream(result.stdout, runCwd)
+    if (refreshing) await writeFile(streamExpected, normalized)
+    expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
+    expect(normalized).toContain('PENTEST READY')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
   it('replays two fresh Ralph rounds through the one-shot app', async () => {

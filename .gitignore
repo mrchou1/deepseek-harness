@@ -38,3 +38,6 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+
+# Generated pentest report deliverables written into the working directory.
+/pentest-report-*.docx

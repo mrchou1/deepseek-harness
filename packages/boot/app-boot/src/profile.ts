@@ -112,12 +112,22 @@ export function resolveProfileDir(name: string, home: string = resolveDshHome())
 
 /** The shipped profile templates auto-initialized on first use, by name. */
 export const PROFILE_TEMPLATES: Record<string, readonly string[]> = {
-  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+  // The web profile mounts the pentest domain bundle, so the shipped pentest
+  // preset is selectable and usable under plain `dsh web`; storage comes from web-app.
+  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-pentest'],
   headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
+  // The web pentest surface (browser GUI + pentest domain); storage comes from web-app.
+  pentest: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-pentest'],
+  // One-shot headless pentest; storage comes from the dedicated storage bundle.
+  'pentest-headless': ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-pentest-storage', '@deepseek-ai/dsh-pentest'],
 }
 
 /** Installation-owned bundle tuples normalized to the shipped template. */
 const INSTALLATION_OWNED_PROFILE_TUPLES: Record<string, readonly string[]> = {
+  // The web template now mounts the pentest domain bundle; an existing exact
+  // installation-owned tuple normalizes so the pentest preset works on the
+  // next boot without a manual `dsh plugin --profile web add`.
+  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
   headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'],
 }
 

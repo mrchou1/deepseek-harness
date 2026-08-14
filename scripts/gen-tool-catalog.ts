@@ -63,6 +63,19 @@ import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
 import VmWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
 import * as ToolWorkflow from '@deepseek-ai/dsh-tool-workflow'
+import LocalPentestRuntime from '@deepseek-ai/dsh-pentest-runtime-local'
+import * as ToolRecon from '@deepseek-ai/dsh-tool-recon'
+import Storage from '@deepseek-ai/dsh-storage'
+import * as StorageJson from '@deepseek-ai/dsh-storage-json'
+import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
+import FindingsService from '@deepseek-ai/dsh-findings'
+import EvidenceService from '@deepseek-ai/dsh-evidence'
+import EngagementService from '@deepseek-ai/dsh-engagement'
+import * as ToolEngagement from '@deepseek-ai/dsh-tool-engagement'
+import * as ToolFindings from '@deepseek-ai/dsh-tool-findings'
+import * as ToolScan from '@deepseek-ai/dsh-tool-scan'
+import * as ToolReport from '@deepseek-ai/dsh-tool-report'
+import * as ToolExploit from '@deepseek-ai/dsh-tool-exploit'
 import { githubSlug } from './verify-md-links.ts'
 
 /** Attachment seam marker that makes the attachments-conditional `read_image` schema harvestable. */
@@ -404,6 +417,109 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-recon',
+    dir: 'tool-recon',
+    source: 'packages/pentest/tool-recon/src/index.ts',
+    requires: ['ctx.tools', 'ctx.pentest', 'ctx.evidence'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(LocalPentestRuntime)
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(EvidenceService)
+      await ctx.plugin(ToolRecon)
+    },
+    note:
+      'The recon tool family consumes the pentest runtime seam; a missing tool binary fails the call at execution time. The rules-of-engagement guard gates the target.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-engagement',
+    dir: 'tool-engagement',
+    source: 'packages/pentest/tool-engagement/src/index.ts',
+    requires: ['ctx.tools', 'ctx.engagement'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(EngagementService)
+      await ctx.plugin(ToolEngagement)
+    },
+    note:
+      'The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-findings',
+    dir: 'tool-findings',
+    source: 'packages/pentest/tool-findings/src/index.ts',
+    requires: ['ctx.tools', 'ctx.findings'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(FindingsService)
+      await ctx.plugin(ToolFindings)
+    },
+    note:
+      'The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-scan',
+    dir: 'tool-scan',
+    source: 'packages/pentest/tool-scan/src/index.ts',
+    requires: ['ctx.tools', 'ctx.pentest', 'ctx.evidence'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(LocalPentestRuntime)
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(EvidenceService)
+      await ctx.plugin(ToolScan)
+    },
+    note:
+      'The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-report',
+    dir: 'tool-report',
+    source: 'packages/pentest/tool-report/src/index.ts',
+    requires: ['ctx.tools', 'ctx.findings', 'ctx.evidence'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(FindingsService)
+      await ctx.plugin(EvidenceService)
+      await ctx.plugin(ToolReport)
+    },
+    note:
+      'The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-exploit',
+    dir: 'tool-exploit',
+    source: 'packages/pentest/tool-exploit/src/index.ts',
+    requires: ['ctx.tools', 'ctx.pentest', 'ctx.evidence'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(LocalPentestRuntime)
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(EvidenceService)
+      await ctx.plugin(ToolExploit)
+    },
+    note:
+      'The exploit tool runs a shell command over the pentest runtime seam; the rules-of-engagement guard gates phase and scope, and a pre-execute listener pauses every exploit call for operator approval.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-skill',

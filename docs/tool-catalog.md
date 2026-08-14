@@ -30,6 +30,12 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
+| `@deepseek-ai/dsh-tool-recon` | `recon_dns`, `recon_whois` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The recon tool family consumes the pentest runtime seam; a missing tool binary fails the call at execution time. The rules-of-engagement guard gates the target. |
+| `@deepseek-ai/dsh-tool-engagement` | `engagement_close`, `engagement_get`, `engagement_set_phase`, `engagement_start` | `ctx.tools`, `ctx.engagement` | `tool/call`, `tool/result` | - | The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase. |
+| `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_update` | `ctx.tools`, `ctx.findings` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form. |
+| `@deepseek-ai/dsh-tool-scan` | `scan_http`, `scan_screenshot`, `scan_tcp_ports` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target. |
+| `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`, `ctx.findings`, `ctx.evidence` | `tool/call`, `tool/result` | - | The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header. |
+| `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The exploit tool runs a shell command over the pentest runtime seam; the rules-of-engagement guard gates phase and scope, and a pre-execute listener pauses every exploit call for operator approval. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`. |
@@ -1207,6 +1213,530 @@ Run a foreground fresh-agent Ralph loop toward one immutable objective. Use only
 Source: [`packages/workflow/tool-ralph/src/index.ts`](../packages/workflow/tool-ralph/src/index.ts)
 
 A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap.
+
+<a id="deepseek-aidsh-tool-recon"></a>
+
+## `@deepseek-ai/dsh-tool-recon`
+
+### `recon_dns`
+
+Resolve DNS records for an authorized target hostname and record the result as evidence.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname to resolve."
+    },
+    "recordType": {
+      "type": "string",
+      "description": "Record type (A, AAAA, MX, TXT, ...); default A."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-recon/src/index.ts`](../packages/pentest/tool-recon/src/index.ts)
+
+### `recon_whois`
+
+Look up WHOIS registration data for an authorized domain and record the result as evidence.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare domain to look up."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-recon/src/index.ts`](../packages/pentest/tool-recon/src/index.ts)
+
+The recon tool family consumes the pentest runtime seam; a missing tool binary fails the call at execution time. The rules-of-engagement guard gates the target.
+
+<a id="deepseek-aidsh-tool-engagement"></a>
+
+## `@deepseek-ai/dsh-tool-engagement`
+
+### `engagement_close`
+
+End the active engagement, returning to the none state.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_get`
+
+Read the active engagement, or null when none is started.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_set_phase`
+
+Advance or rewind the active engagement to a lifecycle phase.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "phase": {
+      "type": "string",
+      "description": "Target lifecycle phase.",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    }
+  },
+  "required": [
+    "phase"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_start`
+
+Start a new authorized engagement (replacing any active one) in the recon phase.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Display name."
+    },
+    "cidrs": {
+      "type": "array",
+      "description": "Authorized IPv4 ranges.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "domains": {
+      "type": "array",
+      "description": "Authorized hostnames.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "description": "Explicit exclusions.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "authorizedUntil": {
+      "type": "string",
+      "description": "Authorization horizon (ISO date)."
+    },
+    "allowedPhases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "recon",
+          "scan",
+          "exploit",
+          "report"
+        ]
+      }
+    },
+    "contact": {
+      "type": "string",
+      "description": "Human point of contact."
+    }
+  },
+  "required": [
+    "name",
+    "cidrs",
+    "domains",
+    "authorizedUntil",
+    "allowedPhases",
+    "contact"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase.
+
+<a id="deepseek-aidsh-tool-findings"></a>
+
+## `@deepseek-ai/dsh-tool-findings`
+
+### `findings_create`
+
+Create one pentest finding and store it durably. Defaults status to open and empty lists for evidence and references.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ]
+    },
+    "cvss": {
+      "type": "number",
+      "description": "CVSS base score 0-10; omit when not scored."
+    },
+    "affectedTarget": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "triaged",
+        "fixed",
+        "accepted",
+        "risk"
+      ]
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "phaseSource": {
+      "type": "string",
+      "description": "Lifecycle phase that discovered this finding.",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    }
+  },
+  "required": [
+    "title",
+    "severity",
+    "affectedTarget",
+    "description",
+    "phaseSource"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_delete`
+
+Delete one pentest finding durably.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_get`
+
+Read one pentest finding by id.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_list`
+
+List all pentest findings in durable insertion order.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_update`
+
+Merge mutable fields onto an existing pentest finding; unknown ids fail the call.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ]
+    },
+    "cvss": {
+      "type": "number"
+    },
+    "affectedTarget": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "triaged",
+        "fixed",
+        "accepted",
+        "risk"
+      ]
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form.
+
+<a id="deepseek-aidsh-tool-scan"></a>
+
+## `@deepseek-ai/dsh-tool-scan`
+
+### `scan_http`
+
+Probe an HTTP endpoint on an authorized target with curl, capturing the request packet and the response packet as evidence.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname or IPv4 literal."
+    },
+    "port": {
+      "type": "integer",
+      "description": "TCP port (default 80)."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-scan/src/index.ts`](../packages/pentest/tool-scan/src/index.ts)
+
+### `scan_screenshot`
+
+Capture a headless-browser screenshot of an authorized target URL and record the image as evidence.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Authorized bare hostname or IPv4 literal; must be the host of `url`."
+    },
+    "url": {
+      "type": "string",
+      "description": "Full URL to capture (e.g. http://10.0.0.5/login.php)."
+    },
+    "width": {
+      "type": "integer",
+      "description": "Viewport width in pixels (default 1280)."
+    },
+    "height": {
+      "type": "integer",
+      "description": "Viewport height in pixels (default 720)."
+    }
+  },
+  "required": [
+    "target",
+    "url"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-scan/src/index.ts`](../packages/pentest/tool-scan/src/index.ts)
+
+### `scan_tcp_ports`
+
+Scan TCP ports on an authorized target with nmap (TCP connect scan) and record the report as evidence.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname or IPv4 literal."
+    },
+    "ports": {
+      "type": "string",
+      "description": "Port list (e.g. \"22,80,443\" or \"1-1024\"); default scans common ports."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-scan/src/index.ts`](../packages/pentest/tool-scan/src/index.ts)
+
+The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target.
+
+<a id="deepseek-aidsh-tool-report"></a>
+
+## `@deepseek-ai/dsh-tool-report`
+
+### `report_generate`
+
+Generate a Chinese-language Word (.docx) pentest report from the durable findings and evidence stores, write it to disk, and return its path.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-report/src/index.ts`](../packages/pentest/tool-report/src/index.ts)
+
+The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header.
+
+<a id="deepseek-aidsh-tool-exploit"></a>
+
+## `@deepseek-ai/dsh-tool-exploit`
+
+### `exploit_run`
+
+Run an exploit or payload shell command against an authorized target and record its output as evidence; requires operator approval.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname or IPv4 literal (the authorized target)."
+    },
+    "command": {
+      "type": "string",
+      "description": "Exact shell command to run."
+    }
+  },
+  "required": [
+    "target",
+    "command"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-exploit/src/index.ts`](../packages/pentest/tool-exploit/src/index.ts)
+
+The exploit tool runs a shell command over the pentest runtime seam; the rules-of-engagement guard gates phase and scope, and a pre-execute listener pauses every exploit call for operator approval.
 
 <a id="deepseek-aidsh-tool-skill"></a>
 
