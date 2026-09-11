@@ -5899,6 +5899,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-coverage-ledger':
+        specifier: workspace:^
+        version: link:../coverage-ledger
       '@deepseek-ai/dsh-engagement':
         specifier: workspace:^
         version: link:../engagement
@@ -6037,6 +6040,9 @@ importers:
       '@deepseek-ai/dsh-action-policy':
         specifier: workspace:^
         version: link:../action-policy
+      '@deepseek-ai/dsh-coverage-ledger':
+        specifier: workspace:^
+        version: link:../coverage-ledger
       '@deepseek-ai/dsh-engagement':
         specifier: workspace:^
         version: link:../engagement

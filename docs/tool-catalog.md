@@ -1327,7 +1327,7 @@ Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/to
 
 ### `engagement_set_phase`
 
-Advance or rewind the active engagement to a lifecycle phase.
+Advance or rewind the active engagement to a lifecycle phase. Entering `report` requires the coverage ledger to have no unattempted, unwaived cell: attempt the technique or record a waiver with coverage_mark first.
 
 ```json
 {
@@ -2276,7 +2276,7 @@ The scan tool family consumes the pentest runtime seam; a missing scanner binary
 
 ### `report_generate`
 
-生成中文 Word（.docx）渗透测试报告：基于持久化的漏洞、证据与报告章节记录，写入磁盘并返回路径。报告必须通过 report_validate 的契约校验，未通过时将以缺口清单拒绝；尚未证实的结论不会出现在已确认漏洞列表中。variant 选择受众：executive 为管理层摘要（执行摘要、风险定级依据、业务影响、严重性分布、漏洞列表），technical 为技术报告（漏洞列表与详情、证据、未验证观察、修复优先级、术语对照），full 为两者合并（默认）。
+生成中文 Word（.docx）渗透测试报告：基于持久化的漏洞、证据与报告章节记录，写入磁盘并返回路径。报告必须先通过 report_validate 的契约校验，且覆盖台账不得有未尝试且未豁免的单元格，否则以缺口清单拒绝；尚未证实的结论不会出现在已确认漏洞列表中。variant 选择受众：executive 为管理层摘要（执行摘要、风险定级依据、业务影响、严重性分布、漏洞列表），technical 为技术报告（漏洞列表与详情、证据、未验证观察、修复优先级、术语对照），full 为两者合并（默认）。
 
 ```json
 {
