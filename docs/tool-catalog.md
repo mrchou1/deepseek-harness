@@ -34,6 +34,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-engagement` | `engagement_close`, `engagement_get`, `engagement_pause`, `engagement_resume`, `engagement_set_phase`, `engagement_start` | `ctx.tools`, `ctx.engagement` | `tool/call`, `tool/result` | - | The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase. |
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_pending`, `findings_refute`, `findings_update`, `findings_verify` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain: mutations persist through the storage-domain form, a verification is refused unless the evidence store holds every reference it cites, and the family contributes the pending-conclusions system-prompt section. |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`, `process_log_list` | `ctx.tools`, `ctx.processLog` | `tool/call`, `tool/result` | - | The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read. |
+| `@deepseek-ai/dsh-tool-coverage` | `coverage_gaps`, `coverage_list`, `coverage_mark` | `ctx.tools`, `ctx.coverage` | `tool/call`, `tool/result` | - | The coverage tools read the completeness matrix and settle a cell the engagement will not attempt; attempts themselves are projected from the process ledger, so these tools carry decisions and never invent one. |
 | `@deepseek-ai/dsh-tool-report-sections` | `report_section_delete`, `report_section_list`, `report_section_write` | `ctx.tools`, `ctx.reportSections` | `tool/call`, `tool/result` | - | The report-sections tools write and read the durable narrative prose a report is assembled from; the writer subagent fills the sections and the renderer prints them, so the tools carry prose and never formatting. |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`, `scan_screenshot`, `scan_tcp_ports` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target. |
 | `@deepseek-ai/dsh-tool-report` | `report_generate`, `report_validate` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.reportSections (opportunistic)`, `ctx.processLog (opportunistic)` | `tool/call`, `tool/result` | - | The report tool checks the report contract, then renders the durable findings, evidence, narrative sections, and the process timeline as a Chinese-language Word (.docx) report file; it reads the engagement name and the unproved-claim policy opportunistically for the header and the gate. |
@@ -1941,6 +1942,139 @@ List the engagement process ledger: one row per call the rules-of-engagement pol
 Source: [`packages/pentest/tool-process-log/src/index.ts`](../packages/pentest/tool-process-log/src/index.ts)
 
 The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read.
+
+<a id="deepseek-aidsh-tool-coverage"></a>
+
+## `@deepseek-ai/dsh-tool-coverage`
+
+### `coverage_gaps`
+
+列出尚未尝试、且未获豁免的覆盖单元格（范围内目标 × 手法类别）。交出报告前这份清单必须为空：要么用受门控的工具真正尝试该手法，要么用 coverage_mark 记录带理由的豁免。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool-coverage/src/index.ts)
+
+### `coverage_list`
+
+列出覆盖台账的单元格，可按目标、手法或状态过滤。每个单元格记录该手法对该目标尝试过几次、产出哪些结论、是否被豁免。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "只列出该目标的单元格。"
+    },
+    "technique": {
+      "type": "string",
+      "description": "只列出该手法类别的单元格。",
+      "enum": [
+        "recon",
+        "scan",
+        "web-probe",
+        "web-fuzz",
+        "exploit",
+        "credential-attack",
+        "credential-dump",
+        "lateral-movement",
+        "persistence",
+        "exfiltration",
+        "dos"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "description": "只列出该状态的单元格（not-attempted=尚未尝试、attempted=已尝试、confirmed=已确认（有结论）、not-applicable=不适用）。",
+      "enum": [
+        "not-attempted",
+        "attempted",
+        "confirmed",
+        "not-applicable"
+      ]
+    }
+  }
+}
+```
+
+Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool-coverage/src/index.ts)
+
+### `coverage_mark`
+
+给一个覆盖单元格下定论：confirmed=已确认（有结论）、not-applicable=不适用，或对该格子记录带理由与操作者的豁免（waiverReason + waiverOperator，与 status=not-attempted 同时给出）。状态只前进：已确认的格子无法回退为已尝试或尚未尝试。真正跑过的尝试由台账自动记录，不要用它伪造。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "范围内目标（与覆盖台账中的目标写法一致）。"
+    },
+    "technique": {
+      "type": "string",
+      "description": "手法类别。",
+      "enum": [
+        "recon",
+        "scan",
+        "web-probe",
+        "web-fuzz",
+        "exploit",
+        "credential-attack",
+        "credential-dump",
+        "lateral-movement",
+        "persistence",
+        "exfiltration",
+        "dos"
+      ]
+    },
+    "service": {
+      "type": "string",
+      "description": "服务或端点（可选，用于更细的单元格）。"
+    },
+    "status": {
+      "type": "string",
+      "description": "要断言的状态。",
+      "enum": [
+        "not-attempted",
+        "attempted",
+        "confirmed",
+        "not-applicable"
+      ]
+    },
+    "findingIds": {
+      "type": "array",
+      "description": "该格子产出的结论 id（会并入已有列表）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "waiverReason": {
+      "type": "string",
+      "description": "不再尝试该手法的理由（与 waiverOperator 同时给出才生效）。"
+    },
+    "waiverOperator": {
+      "type": "string",
+      "description": "接受该缺口的操作者或角色。"
+    }
+  },
+  "required": [
+    "target",
+    "technique",
+    "status"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool-coverage/src/index.ts)
+
+The coverage tools read the completeness matrix and settle a cell the engagement will not attempt; attempts themselves are projected from the process ledger, so these tools carry decisions and never invent one.
 
 <a id="deepseek-aidsh-tool-report-sections"></a>
 

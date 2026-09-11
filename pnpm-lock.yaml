@@ -267,6 +267,9 @@ importers:
       '@deepseek-ai/dsh-tool-cordis':
         specifier: workspace:^
         version: link:../../packages/extensions/tool-cordis
+      '@deepseek-ai/dsh-tool-coverage':
+        specifier: workspace:^
+        version: link:../../packages/pentest/tool-coverage
       '@deepseek-ai/dsh-tool-engagement':
         specifier: workspace:^
         version: link:../../packages/pentest/tool-engagement
@@ -1318,6 +1321,9 @@ importers:
 
   packages/bundle/pentest:
     dependencies:
+      '@deepseek-ai/dsh-coverage-ledger':
+        specifier: workspace:^
+        version: link:../../pentest/coverage-ledger
       '@deepseek-ai/dsh-engagement':
         specifier: workspace:^
         version: link:../../pentest/engagement
@@ -5626,6 +5632,34 @@ importers:
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
 
+  packages/pentest/coverage-ledger:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-action-policy':
+        specifier: workspace:^
+        version: link:../action-policy
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:^
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-engagement':
+        specifier: workspace:^
+        version: link:../engagement
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:^
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+
   packages/pentest/engagement:
     dependencies:
       zod:
@@ -5820,6 +5854,39 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
+
+  packages/pentest/tool-coverage:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-action-policy':
+        specifier: workspace:^
+        version: link:../action-policy
+      '@deepseek-ai/dsh-coverage-ledger':
+        specifier: workspace:^
+        version: link:../coverage-ledger
+      '@deepseek-ai/dsh-engagement':
+        specifier: workspace:^
+        version: link:../engagement
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:^
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../core/system-prompt
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools

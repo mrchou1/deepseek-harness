@@ -37,6 +37,7 @@
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`、`findings_delete`、`findings_get`、`findings_list`、`findings_pending`、`findings_refute`、`findings_update`、`findings_verify` | `ctx.tools`、`ctx.findings` | `tool/call`、`tool/result` | - | 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。 |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`、`process_log_list` | `ctx.tools`、`ctx.processLog` | `tool/call`、`tool/result` | - | 过程台账工具读取「交战规则策略裁定过的每个调用」的持久台账；台账本身在宿主平面写入，因此这些工具只读。 |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`、`scan_screenshot`、`scan_tcp_ports` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 扫描工具家族消费渗透测试运行时 seam；缺少扫描器二进制文件会让调用在执行时失败。scan_http 把请求包与响应包捕获为证据，scan_screenshot 记录无头浏览器图像。交战规则护栏对目标进行门控。 |
+| `@deepseek-ai/dsh-tool-coverage` | `coverage_gaps`、`coverage_list`、`coverage_mark` | `ctx.tools`、`ctx.coverage` | `tool/call`、`tool/result` | - | 覆盖工具读取完成度矩阵，并为交战不会尝试的格子下定论；尝试本身由过程台账投影而来，因此这些工具只承载判断，绝不凭空造出尝试。 |
 | `@deepseek-ai/dsh-tool-report-sections` | `report_section_delete`、`report_section_list`、`report_section_write` | `ctx.tools`、`ctx.reportSections` | `tool/call`、`tool/result` | - | 报告章节工具读写报告赖以装配的持久化叙述文字：由撰写子代理填充章节、由渲染器打印，因此这些工具只承载文字，从不承载排版。 |
 | `@deepseek-ai/dsh-tool-report` | `report_generate`、`report_validate` | `ctx.tools`、`ctx.findings`、`ctx.evidence`、`ctx.reportSections（顺带）`、`ctx.processLog（顺带）` | `tool/call`、`tool/result` | - | 报告工具先校验报告契约，再把持久化的发现、证据、叙述章节与过程时间线渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称与未验证结论策略，分别用于页眉与闸门。 |
 | `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | exploit 工具通过渗透测试运行时 seam 运行 shell 命令；交战规则护栏对阶段与范围进行门控，pre-execute 监听器会暂停每次 exploit 调用以等待操作者审批。 |
@@ -1943,6 +1944,139 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 ```
 
 来源：[`packages/pentest/tool-process-log/src/index.ts`](../packages/pentest/tool-process-log/src/index.ts)
+
+<a id="deepseek-aidsh-tool-coverage"></a>
+
+## `@deepseek-ai/dsh-tool-coverage`
+
+### `coverage_gaps`
+
+列出尚未尝试、且未获豁免的覆盖单元格（范围内目标 × 手法类别）。交出报告前这份清单必须为空：要么用受门控的工具真正尝试该手法，要么用 coverage_mark 记录带理由的豁免。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool-coverage/src/index.ts)
+
+### `coverage_list`
+
+列出覆盖台账的单元格，可按目标、手法或状态过滤。每个单元格记录该手法对该目标尝试过几次、产出哪些结论、是否被豁免。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "只列出该目标的单元格。"
+    },
+    "technique": {
+      "type": "string",
+      "description": "只列出该手法类别的单元格。",
+      "enum": [
+        "recon",
+        "scan",
+        "web-probe",
+        "web-fuzz",
+        "exploit",
+        "credential-attack",
+        "credential-dump",
+        "lateral-movement",
+        "persistence",
+        "exfiltration",
+        "dos"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "description": "只列出该状态的单元格（not-attempted=尚未尝试、attempted=已尝试、confirmed=已确认（有结论）、not-applicable=不适用）。",
+      "enum": [
+        "not-attempted",
+        "attempted",
+        "confirmed",
+        "not-applicable"
+      ]
+    }
+  }
+}
+```
+
+来源：[`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool-coverage/src/index.ts)
+
+### `coverage_mark`
+
+给一个覆盖单元格下定论：confirmed=已确认（有结论）、not-applicable=不适用，或对该格子记录带理由与操作者的豁免（waiverReason + waiverOperator，与 status=not-attempted 同时给出）。状态只前进：已确认的格子无法回退为已尝试或尚未尝试。真正跑过的尝试由台账自动记录，不要用它伪造。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "范围内目标（与覆盖台账中的目标写法一致）。"
+    },
+    "technique": {
+      "type": "string",
+      "description": "手法类别。",
+      "enum": [
+        "recon",
+        "scan",
+        "web-probe",
+        "web-fuzz",
+        "exploit",
+        "credential-attack",
+        "credential-dump",
+        "lateral-movement",
+        "persistence",
+        "exfiltration",
+        "dos"
+      ]
+    },
+    "service": {
+      "type": "string",
+      "description": "服务或端点（可选，用于更细的单元格）。"
+    },
+    "status": {
+      "type": "string",
+      "description": "要断言的状态。",
+      "enum": [
+        "not-attempted",
+        "attempted",
+        "confirmed",
+        "not-applicable"
+      ]
+    },
+    "findingIds": {
+      "type": "array",
+      "description": "该格子产出的结论 id（会并入已有列表）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "waiverReason": {
+      "type": "string",
+      "description": "不再尝试该手法的理由（与 waiverOperator 同时给出才生效）。"
+    },
+    "waiverOperator": {
+      "type": "string",
+      "description": "接受该缺口的操作者或角色。"
+    }
+  },
+  "required": [
+    "target",
+    "technique",
+    "status"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool-coverage/src/index.ts)
+
+覆盖工具读取完成度矩阵，并为交战不会尝试的格子下定论；尝试本身由过程台账投影而来，因此这些工具只承载判断，绝不凭空造出尝试。
 
 <a id="deepseek-aidsh-tool-report-sections"></a>
 

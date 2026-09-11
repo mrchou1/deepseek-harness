@@ -71,10 +71,12 @@ import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import FindingsService from '@deepseek-ai/dsh-findings'
 import EvidenceService from '@deepseek-ai/dsh-evidence'
 import ProcessLogService from '@deepseek-ai/dsh-process-log'
+import CoverageService from '@deepseek-ai/dsh-coverage-ledger'
 import ReportSectionsService from '@deepseek-ai/dsh-report-sections'
 import EngagementService from '@deepseek-ai/dsh-engagement'
 import * as ToolEngagement from '@deepseek-ai/dsh-tool-engagement'
 import * as ToolFindings from '@deepseek-ai/dsh-tool-findings'
+import * as ToolCoverage from '@deepseek-ai/dsh-tool-coverage'
 import * as ToolProcessLog from '@deepseek-ai/dsh-tool-process-log'
 import * as ToolReportSections from '@deepseek-ai/dsh-tool-report-sections'
 import * as ToolScan from '@deepseek-ai/dsh-tool-scan'
@@ -488,6 +490,27 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-coverage',
+    dir: 'tool-coverage',
+    source: 'packages/pentest/tool-coverage/src/index.ts',
+    requires: ['ctx.tools', 'ctx.coverage'],
+    writes: ['tool/call', 'tool/result'],
+    // The storage-and-service boot every domain-backed family repeats; the
+    // shared extraction is tracked as the pentest duplication debt.
+    /* jscpd:ignore-start */
+    async mount(ctx) {
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(EngagementService)
+      await ctx.plugin(CoverageService)
+      await ctx.plugin(ToolCoverage)
+    },
+    /* jscpd:ignore-end */
+    note:
+      'The coverage tools read the completeness matrix and settle a cell the engagement will not attempt; attempts themselves are projected from the process ledger, so these tools carry decisions and never invent one.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-report-sections',
