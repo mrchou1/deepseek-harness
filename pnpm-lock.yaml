@@ -5653,6 +5653,9 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-process-log':
+        specifier: workspace:^
+        version: link:../process-log
       '@deepseek-ai/dsh-storage':
         specifier: workspace:^
         version: link:../../storage/storage
