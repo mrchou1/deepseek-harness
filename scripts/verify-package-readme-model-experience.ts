@@ -120,6 +120,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/lsp/lsp': { kind: 'indirect', reason: 'The provider registry delegates model rendering to dsh-tool-lsp.' },
   'packages/lsp/lsp-stdio': { kind: 'indirect', reason: 'The provider backend delegates model rendering to dsh-tool-lsp.' },
   'packages/subprocess/subprocess': { kind: 'indirect', reason: 'The seam delegates all model rendering to consumer seams such as the bash executor family.' },
+  'packages/pentest/action-policy': { kind: 'none', reason: 'A pure classification library the tool pipeline will consume; its denials will reach the model through the guard that calls it.' },
   'packages/pentest/pentest-runtime': { kind: 'indirect', reason: 'The seam delegates all model rendering to the recon/scan/exploit tool families.' },
   'packages/pentest/pentest-runtime-local': { kind: 'indirect', reason: 'The provider backend delegates model rendering to the recon/scan/exploit tool families.' },
   'packages/e2b/subprocess-e2b': { kind: 'indirect', reason: 'The remote spawn backend delegates model rendering to consumer seams such as the bash executor family.' },

@@ -152,6 +152,7 @@
     { "path": "./packages/storage/storage-json" },
     { "path": "./packages/storage/storage-sqlite" },
     { "path": "./packages/storage/storage-domain" },
+    { "path": "./packages/pentest/action-policy" },
     { "path": "./packages/pentest/engagement" },
     { "path": "./packages/pentest/evidence" },
     { "path": "./packages/pentest/findings" },
