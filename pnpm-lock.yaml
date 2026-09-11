@@ -5869,6 +5869,15 @@ importers:
       '@deepseek-ai/dsh-action-policy':
         specifier: workspace:^
         version: link:../action-policy
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-agent-loop':
+        specifier: workspace:^
+        version: link:../../core/agent-loop
+      '@deepseek-ai/dsh-agent-loop-testkit':
+        specifier: workspace:^
+        version: link:../../test-support/agent-loop-testkit
       '@deepseek-ai/dsh-coverage-ledger':
         specifier: workspace:^
         version: link:../coverage-ledger
@@ -5881,6 +5890,15 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-process-log':
+        specifier: workspace:^
+        version: link:../process-log
+      '@deepseek-ai/dsh-roe-policy':
+        specifier: workspace:^
+        version: link:../roe-policy
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
       '@deepseek-ai/dsh-storage':
         specifier: workspace:^
         version: link:../../storage/storage

@@ -289,6 +289,49 @@ describe('the shipped Web composition', () => {
     }
   })
 
+  it('carries the coverage gaps into the pentest agent’s assembled prompt', async () => {
+    // The coverage ledger owns the matrix, not the transcript: an unattempted
+    // technique cell must reach the model again every turn, and disappear once
+    // the engagement has accounted for it.
+    const pentest = await ctx.agents.create({
+      sessionId: SessionId('preset-pentest-coverage'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'pentest').then(() => undefined),
+    })
+    try {
+      await ctx.engagement.start({
+        name: '预设覆盖段',
+        scope: { cidrs: ['10.0.0.0/30'], domains: ['example.com'] },
+        roe: {
+          authorizedUntil: '2026-12-31',
+          allowedPhases: ['recon', 'scan', 'report'],
+          contact: 'ops@example.com',
+          // `dos` is forbidden, so it must not appear as an obligation.
+          forbiddenTechniques: ['dos'],
+        },
+      })
+      // The matrix arms on the engagement write; the section reads the ledger.
+      await ctx.coverage.sync()
+
+      const assembly = await ctx.systemPrompt.assemble({ scope: pentest.agent })
+      const prompt = assembly.sections.map(section => section.text).join('\n')
+      expect(prompt).toContain('Unattempted coverage (')
+      expect(prompt).toContain('- 10.0.0.0/30 · scan')
+      expect(prompt).toContain('coverage_mark')
+      expect(prompt).not.toContain('- 10.0.0.0/30 · dos')
+
+      // Accounting for every cell leaves no section behind.
+      for (const cell of ctx.coverage.expected()) {
+        await ctx.coverage.recordAttempt({
+          target: cell.target, technique: cell.technique, at: '2026-06-01T10:00:00.000Z',
+        })
+      }
+      const settled = await ctx.systemPrompt.assemble({ scope: pentest.agent })
+      expect(settled.sections.map(section => section.text).join('\n')).not.toContain('Unattempted coverage')
+    } finally {
+      await pentest.dispose()
+    }
+  })
+
   it('composes the exact RL prompt and two tools from `minimal`', async () => {
     const handle = await ctx.agents.create({
       sessionId: SessionId('preset-minimal'),
