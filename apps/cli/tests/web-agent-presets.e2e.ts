@@ -245,7 +245,8 @@ describe('the shipped Web composition', () => {
       // The pentest-only additions, exactly: the domain tools plus the
       // session-history reads an engagement needs to re-read its own process.
       expect(pentestTools.filter(name => !standardTools.includes(name))).toEqual([
-        'engagement_close', 'engagement_get', 'engagement_set_phase', 'engagement_start',
+        'engagement_close', 'engagement_get', 'engagement_pause', 'engagement_resume',
+        'engagement_set_phase', 'engagement_start',
         'exploit_run', 'findings_create', 'findings_delete', 'findings_get', 'findings_list',
         'findings_update', 'recon_dns', 'recon_whois', 'report_generate', 'scan_http',
         'scan_screenshot', 'scan_tcp_ports', 'session_event_read', 'session_event_search',
