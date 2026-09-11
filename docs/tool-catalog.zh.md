@@ -32,6 +32,12 @@
 | `@deepseek-ai/dsh-schedule` | `schedule_create`、`schedule_delete`、`schedule_list` | `ctx.tools`、`ctx.sessions`、Session 持久化、未来创建的 live 根 Agent | `tool/call`、`schedule/change create or delete`、`tool/result` | - | 仅在选择启用的 Schedule 插件加载后创建的 live 根 Agent scope 内注册。版本 1 接受 after_seconds、显式绝对 at 和有界固定速率 every_seconds，并披露 session-local 交付；管理读取与变更必须通过共享的 Session 持久化 barrier。 |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`、`ctx.lsp`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，因此其模型可见 schema 在更换提供方时保持稳定。运行时要求已注册提供方，例如 `@deepseek-ai/dsh-lsp-stdio`；如果没有提供方，查询会返回结构化 `LSP_UNAVAILABLE` 错误，而不会改变 schema。 |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`、`ctx.workflowEngine`、`ctx.subagents`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents every fresh round)` | `tool/call`、`tool/result`、`workflow and child session events during execution` | - | 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。 |
+| `@deepseek-ai/dsh-tool-recon` | `recon_dns`、`recon_whois` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 侦察工具家族消费渗透测试运行时 seam；缺少工具二进制文件会让调用在执行时失败。交战规则护栏对目标进行门控。 |
+| `@deepseek-ai/dsh-tool-engagement` | `engagement_close`、`engagement_get`、`engagement_set_phase`、`engagement_start` | `ctx.tools`、`ctx.engagement` | `tool/call`、`tool/result` | - | 交战工具驱动生命周期：start／get／set-phase／close。推进阶段会解锁后续每个阶段；交战规则护栏仍按范围和阶段对每个阶段工具进行门控。 |
+| `@deepseek-ai/dsh-tool-findings` | `findings_create`、`findings_delete`、`findings_get`、`findings_list`、`findings_update` | `ctx.tools`、`ctx.findings` | `tool/call`、`tool/result` | - | 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。 |
+| `@deepseek-ai/dsh-tool-scan` | `scan_http`、`scan_screenshot`、`scan_tcp_ports` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 扫描工具家族消费渗透测试运行时 seam；缺少扫描器二进制文件会让调用在执行时失败。scan_http 把请求包与响应包捕获为证据，scan_screenshot 记录无头浏览器图像。交战规则护栏对目标进行门控。 |
+| `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`、`ctx.findings`、`ctx.evidence` | `tool/call`、`tool/result` | - | 报告工具把持久化的发现与证据库渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称用于页眉。 |
+| `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | exploit 工具通过渗透测试运行时 seam 运行 shell 命令；交战规则护栏对阶段与范围进行门控，pre-execute 监听器会暂停每次 exploit 调用以等待操作者审批。 |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`、`ctx.agents`、`ctx.skills` | `tool/call`、`tool/result`、`user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`、`session_event_search`、`session_event_trace`、`session_search`、`session_trace` | `ctx.tools`、`ctx.systemPrompt`、`ctx.sessionQuery`、`a calling Agent for workspace authority` | `tool/call`、`tool/result` | - | 这 5 个只读工具会隐藏提供方游标，并根据不可变的调用 agent 会话为每个结果授权。该包需要选择启用；需要强制截止时间或限制行内输出的组合还会挂载通用超时或 spill 策略。 |
 | `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`、`ctx.subagents`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`child session events through the chosen provider` | `subagent`、`subagent_fork` | 注册的工具名称取决于加载时 `toolName` 配置（默认为 `subagent`）；上述 schema 对应默认值。随产品发布的组合会为每个 subagent 后端加载一次该包，因此模型还会看到绑定到 fork 后端的 `subagent_fork`。每个实例的描述、`run_in_background` 参数与 system prompt 策略取决于它自己的 `backgroundMode` 和 `enableRunInBackground`，因此两个随附 schema 并不相同：`subagent` 为 `continuable`，省略参数时默认后台运行，并由 runtime 自动投递结束结果；`subagent_fork` 保持 `one-shot`，省略参数时默认前台运行。详见 `packages/bundle/base/cordis.patch.yml` 和 `examples/acp-agent/cordis.yml`。 |
@@ -1211,6 +1217,530 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 来源：[`packages/workflow/tool-ralph/src/index.ts`](../packages/workflow/tool-ralph/src/index.ts)
 
 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。
+
+<a id="deepseek-aidsh-tool-recon"></a>
+
+## `@deepseek-ai/dsh-tool-recon`
+
+### `recon_dns`
+
+解析已授权目标主机名的 DNS 记录，并把结果记录为证据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname to resolve."
+    },
+    "recordType": {
+      "type": "string",
+      "description": "Record type (A, AAAA, MX, TXT, ...); default A."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-recon/src/index.ts`](../packages/pentest/tool-recon/src/index.ts)
+
+### `recon_whois`
+
+查询已授权域名的 WHOIS 注册数据，并把结果记录为证据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare domain to look up."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-recon/src/index.ts`](../packages/pentest/tool-recon/src/index.ts)
+
+侦察工具家族消费渗透测试运行时 seam；缺少工具二进制文件会让调用在执行时失败。交战规则护栏对目标进行门控。
+
+<a id="deepseek-aidsh-tool-engagement"></a>
+
+## `@deepseek-ai/dsh-tool-engagement`
+
+### `engagement_close`
+
+结束当前交战，回到 none 状态。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_get`
+
+读取当前交战；未启动任何交战时返回 null。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_set_phase`
+
+把当前交战推进或回退到某个生命周期阶段。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "phase": {
+      "type": "string",
+      "description": "Target lifecycle phase.",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    }
+  },
+  "required": [
+    "phase"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_start`
+
+以侦察阶段启动一次新的已授权交战，并替换任何当前交战。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Display name."
+    },
+    "cidrs": {
+      "type": "array",
+      "description": "Authorized IPv4 ranges.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "domains": {
+      "type": "array",
+      "description": "Authorized hostnames.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "description": "Explicit exclusions.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "authorizedUntil": {
+      "type": "string",
+      "description": "Authorization horizon (ISO date)."
+    },
+    "allowedPhases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "recon",
+          "scan",
+          "exploit",
+          "report"
+        ]
+      }
+    },
+    "contact": {
+      "type": "string",
+      "description": "Human point of contact."
+    }
+  },
+  "required": [
+    "name",
+    "cidrs",
+    "domains",
+    "authorizedUntil",
+    "allowedPhases",
+    "contact"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+交战工具驱动生命周期：start／get／set-phase／close。推进阶段会解锁后续每个阶段；交战规则护栏仍按范围和阶段对每个阶段工具进行门控。
+
+<a id="deepseek-aidsh-tool-findings"></a>
+
+## `@deepseek-ai/dsh-tool-findings`
+
+### `findings_create`
+
+创建一条渗透测试发现并持久保存。status 默认为 open，evidence 与 references 默认为空列表。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ]
+    },
+    "cvss": {
+      "type": "number",
+      "description": "CVSS base score 0-10; omit when not scored."
+    },
+    "affectedTarget": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "triaged",
+        "fixed",
+        "accepted",
+        "risk"
+      ]
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "phaseSource": {
+      "type": "string",
+      "description": "Lifecycle phase that discovered this finding.",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    }
+  },
+  "required": [
+    "title",
+    "severity",
+    "affectedTarget",
+    "description",
+    "phaseSource"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_delete`
+
+持久删除一条渗透测试发现。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_get`
+
+按 id 读取一条渗透测试发现。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_list`
+
+按持久化的插入顺序列出所有渗透测试发现。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_update`
+
+把可变字段合并到一条既有渗透测试发现上；未知 id 会让调用失败。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ]
+    },
+    "cvss": {
+      "type": "number"
+    },
+    "affectedTarget": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "triaged",
+        "fixed",
+        "accepted",
+        "risk"
+      ]
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。
+
+<a id="deepseek-aidsh-tool-scan"></a>
+
+## `@deepseek-ai/dsh-tool-scan`
+
+### `scan_http`
+
+使用 curl 探测已授权目标上的 HTTP 端点，并把请求包与响应包捕获为证据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname or IPv4 literal."
+    },
+    "port": {
+      "type": "integer",
+      "description": "TCP port (default 80)."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-scan/src/index.ts`](../packages/pentest/tool-scan/src/index.ts)
+
+### `scan_screenshot`
+
+捕获已授权目标 URL 的无头浏览器截图，并把该图像记录为证据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Authorized bare hostname or IPv4 literal; must be the host of `url`."
+    },
+    "url": {
+      "type": "string",
+      "description": "Full URL to capture (e.g. http://10.0.0.5/login.php)."
+    },
+    "width": {
+      "type": "integer",
+      "description": "Viewport width in pixels (default 1280)."
+    },
+    "height": {
+      "type": "integer",
+      "description": "Viewport height in pixels (default 720)."
+    }
+  },
+  "required": [
+    "target",
+    "url"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-scan/src/index.ts`](../packages/pentest/tool-scan/src/index.ts)
+
+### `scan_tcp_ports`
+
+使用 nmap（TCP connect 扫描）扫描已授权目标上的 TCP 端口，并把报告记录为证据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname or IPv4 literal."
+    },
+    "ports": {
+      "type": "string",
+      "description": "Port list (e.g. \"22,80,443\" or \"1-1024\"); default scans common ports."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-scan/src/index.ts`](../packages/pentest/tool-scan/src/index.ts)
+
+扫描工具家族消费渗透测试运行时 seam；缺少扫描器二进制文件会让调用在执行时失败。scan_http 把请求包与响应包捕获为证据，scan_screenshot 记录无头浏览器图像。交战规则护栏对目标进行门控。
+
+<a id="deepseek-aidsh-tool-report"></a>
+
+## `@deepseek-ai/dsh-tool-report`
+
+### `report_generate`
+
+根据持久化的发现与证据库生成中文 Word（.docx）渗透测试报告，写入磁盘并返回其路径。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-report/src/index.ts`](../packages/pentest/tool-report/src/index.ts)
+
+报告工具把持久化的发现与证据库渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称用于页眉。
+
+<a id="deepseek-aidsh-tool-exploit"></a>
+
+## `@deepseek-ai/dsh-tool-exploit`
+
+### `exploit_run`
+
+对已授权目标运行 exploit 或 payload shell 命令，并把其输出记录为证据；需要操作者审批。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Bare hostname or IPv4 literal (the authorized target)."
+    },
+    "command": {
+      "type": "string",
+      "description": "Exact shell command to run."
+    }
+  },
+  "required": [
+    "target",
+    "command"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-exploit/src/index.ts`](../packages/pentest/tool-exploit/src/index.ts)
+
+exploit 工具通过渗透测试运行时 seam 运行 shell 命令；交战规则护栏对阶段与范围进行门控，pre-execute 监听器会暂停每次 exploit 调用以等待操作者审批。
 
 <a id="deepseek-aidsh-tool-skill"></a>
 
