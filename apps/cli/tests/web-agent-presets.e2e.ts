@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { DEFAULT_SCHEMA, Type, load } from 'js-yaml'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -137,6 +139,43 @@ async function bootWeb(
 const toolNames = (ctx: Context, agent?: Agent): string[] =>
   ctx.tools.schemas(agent).map(schema => schema.name).sort()
 
+/** The pentest preset's own file, whose persona rows this suite reads structurally. */
+const PENTEST_PRESET = join(CONFIG_DIR, 'agent-presets/pentest/agent.cordis.yml')
+
+/**
+ * Every persona tool filter the preset declares, keyed by the delegation tool
+ * name that spawns that child. `!!js` marks a config expression the loader
+ * evaluates; this reader only needs row structure, so the tag keeps the
+ * expression text the row wraps.
+ */
+function presetToolFilters(path: string): Map<string, string[]> {
+  const jsExpression = new Type('tag:yaml.org,2002:js', {
+    kind: 'scalar',
+    resolve: (value?: string) => typeof value === 'string',
+    construct: (value: unknown) => value,
+  })
+  const filters = new Map<string, string[]>()
+  const walk = (rows: unknown): void => {
+    if (!Array.isArray(rows)) return
+    for (const row of rows) {
+      if (typeof row !== 'object' || row === null) continue
+      const config = (row as { config?: unknown }).config
+      if (Array.isArray(config)) {
+        walk(config)
+        continue
+      }
+      if (typeof config !== 'object' || config === null) continue
+      const { toolName, toolFilter } = config as { toolName?: unknown; toolFilter?: unknown }
+      if (typeof toolName !== 'string' || typeof toolFilter !== 'object' || toolFilter === null) continue
+      const allow = (toolFilter as { allow?: unknown }).allow
+      if (!Array.isArray(allow)) continue
+      filters.set(toolName, allow.filter((name): name is string => typeof name === 'string'))
+    }
+  }
+  walk(load(readFileSync(path, 'utf8'), { schema: DEFAULT_SCHEMA.extend([jsExpression]) }))
+  return filters
+}
+
 function enablePresetTool(composition: string, id: string): string {
   const row = `    - id: ${id}\n`
   const start = composition.indexOf(row)
@@ -251,7 +290,8 @@ describe('the shipped Web composition', () => {
         'engagement_set_phase', 'engagement_start',
         'exploit_run', 'findings_create', 'findings_delete', 'findings_get', 'findings_list',
         'findings_pending', 'findings_refute', 'findings_update', 'findings_verify',
-        'pentest_challenger', 'pentest_report_writer', 'pentest_verifier', 'playbook_list', 'playbook_proposals',
+        'pentest_challenger', 'pentest_knowledge_distiller', 'pentest_report_writer', 'pentest_verifier',
+        'playbook_list', 'playbook_proposals',
         'playbook_propose', 'playbook_publish', 'playbook_reject',
         'process_log_get', 'process_log_list', 'recon_dns', 'recon_whois',
         'report_generate', 'report_section_delete', 'report_section_list', 'report_section_write',
@@ -262,6 +302,40 @@ describe('the shipped Web composition', () => {
     } finally {
       await pentest.dispose()
       await standard.dispose()
+    }
+  })
+
+  it('restricts every pentest persona to tools the pentest agent actually has', async () => {
+    // A persona's filter names must exist on the agent that spawns it: a typo
+    // silently denies that child a tool it needs, which no other check sees.
+    const pentest = await ctx.agents.create({
+      sessionId: SessionId('preset-pentest-personas'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'pentest').then(() => undefined),
+    })
+    try {
+      const available = new Set(toolNames(ctx, pentest.agent))
+      const filters = presetToolFilters(PENTEST_PRESET)
+      expect([...filters.keys()].sort()).toEqual(expect.arrayContaining([
+        'pentest_challenger', 'pentest_knowledge_distiller', 'pentest_report_writer', 'pentest_verifier',
+      ]))
+      for (const [persona, allow] of filters) {
+        expect(allow.length, `${persona} filters to nothing`).toBeGreaterThan(0)
+        expect(allow.filter(name => !available.has(name)), `${persona} names a tool the agent lacks`).toEqual([])
+      }
+      // The distiller proposes; publishing is the operator's decision, so the
+      // child cannot reach the gated tool at all.
+      const distiller = filters.get('pentest_knowledge_distiller') ?? []
+      expect(distiller).toContain('playbook_propose')
+      expect(distiller).toContain('playbook_proposals')
+      expect(distiller).not.toContain('playbook_publish')
+      expect(distiller).not.toContain('playbook_reject')
+      // A verifier settles conclusions with the gated families but cannot
+      // invent or edit the claim it is testing.
+      const verifier = filters.get('pentest_verifier') ?? []
+      expect(verifier).toContain('findings_verify')
+      expect(verifier).not.toContain('findings_create')
+    } finally {
+      await pentest.dispose()
     }
   })
 
