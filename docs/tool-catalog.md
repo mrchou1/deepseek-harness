@@ -35,7 +35,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_pending`, `findings_refute`, `findings_update`, `findings_verify` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain: mutations persist through the storage-domain form, a verification is refused unless the evidence store holds every reference it cites, and the family contributes the pending-conclusions system-prompt section. |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`, `process_log_list` | `ctx.tools`, `ctx.processLog` | `tool/call`, `tool/result` | - | The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read. |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`, `scan_screenshot`, `scan_tcp_ports` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target. |
-| `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`, `ctx.findings`, `ctx.evidence` | `tool/call`, `tool/result` | - | The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header. |
+| `@deepseek-ai/dsh-tool-report` | `report_generate`, `report_validate` | `ctx.tools`, `ctx.findings`, `ctx.evidence` | `tool/call`, `tool/result` | - | The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header. |
 | `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The exploit tool runs a shell command over the pentest runtime seam; the rules-of-engagement guard gates phase and scope, and a pre-execute listener pauses every exploit call for operator approval. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
@@ -1504,6 +1504,14 @@ Start a new authorized engagement (replacing any active one) in the recon phase.
         "from",
         "to"
       ]
+    },
+    "unverifiedInReport": {
+      "type": "string",
+      "description": "How the report presents a conclusion the engagement never proved.",
+      "enum": [
+        "separate-section",
+        "block"
+      ]
     }
   },
   "required": [
@@ -2029,7 +2037,20 @@ The scan tool family consumes the pentest runtime seam; a missing scanner binary
 
 ### `report_generate`
 
-生成中文 Word（.docx）渗透测试报告：基于持久化的漏洞与证据记录，写入磁盘并返回路径。
+生成中文 Word（.docx）渗透测试报告：基于持久化的漏洞与证据记录，写入磁盘并返回路径。报告必须通过 report_validate 的契约校验，未通过时将以缺口清单拒绝；尚未证实的结论不会出现在已确认漏洞列表中。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-report/src/index.ts`](../packages/pentest/tool-report/src/index.ts)
+
+### `report_validate`
+
+按报告契约校验当前漏洞库：每条结论都需要描述、测试过程（请求包/返回包/命令输出）、视觉主张对应的截图、严重性评级或 CVSS，以及中文标题、描述与修复建议。返回缺口清单；未验证结论按交战配置列入「未验证观察」章节或阻断生成。生成报告前应先通过本校验。
 
 ```json
 {

@@ -37,7 +37,7 @@
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`、`findings_delete`、`findings_get`、`findings_list`、`findings_pending`、`findings_refute`、`findings_update`、`findings_verify` | `ctx.tools`、`ctx.findings` | `tool/call`、`tool/result` | - | 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。 |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`、`process_log_list` | `ctx.tools`、`ctx.processLog` | `tool/call`、`tool/result` | - | 过程台账工具读取「交战规则策略裁定过的每个调用」的持久台账；台账本身在宿主平面写入，因此这些工具只读。 |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`、`scan_screenshot`、`scan_tcp_ports` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 扫描工具家族消费渗透测试运行时 seam；缺少扫描器二进制文件会让调用在执行时失败。scan_http 把请求包与响应包捕获为证据，scan_screenshot 记录无头浏览器图像。交战规则护栏对目标进行门控。 |
-| `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`、`ctx.findings`、`ctx.evidence` | `tool/call`、`tool/result` | - | 报告工具把持久化的发现与证据库渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称用于页眉。 |
+| `@deepseek-ai/dsh-tool-report` | `report_generate`、`report_validate` | `ctx.tools`、`ctx.findings`、`ctx.evidence` | `tool/call`、`tool/result` | - | 报告工具把持久化的发现与证据库渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称用于页眉。 |
 | `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | exploit 工具通过渗透测试运行时 seam 运行 shell 命令；交战规则护栏对阶段与范围进行门控，pre-execute 监听器会暂停每次 exploit 调用以等待操作者审批。 |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`、`ctx.agents`、`ctx.skills` | `tool/call`、`tool/result`、`user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`、`session_event_search`、`session_event_trace`、`session_search`、`session_trace` | `ctx.tools`、`ctx.systemPrompt`、`ctx.sessionQuery`、`a calling Agent for workspace authority` | `tool/call`、`tool/result` | - | 这 5 个只读工具会隐藏提供方游标，并根据不可变的调用 agent 会话为每个结果授权。该包需要选择启用；需要强制截止时间或限制行内输出的组合还会挂载通用超时或 spill 策略。 |
@@ -1508,6 +1508,14 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
         "from",
         "to"
       ]
+    },
+    "unverifiedInReport": {
+      "type": "string",
+      "description": "How the report presents a conclusion the engagement never proved.",
+      "enum": [
+        "separate-section",
+        "block"
+      ]
     }
   },
   "required": [
@@ -2029,7 +2037,20 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `report_generate`
 
-根据持久化的发现与证据库生成中文 Word（.docx）渗透测试报告，写入磁盘并返回其路径。
+根据持久化的发现与证据库生成中文 Word（.docx）渗透测试报告，写入磁盘并返回其路径。报告必须通过 report_validate 的契约校验，未通过时将以缺口清单拒绝；尚未证实的结论不会出现在已确认漏洞列表中。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-report/src/index.ts`](../packages/pentest/tool-report/src/index.ts)
+
+### `report_validate`
+
+按报告契约校验当前漏洞库：每条结论都需要描述、测试过程（请求包/返回包/命令输出）、视觉主张对应的截图、严重性评级或 CVSS，以及中文标题、描述与修复建议。返回缺口清单；未验证结论按交战配置列入「未验证观察」章节或阻断生成。生成报告前应先通过本校验。
 
 ```json
 {

@@ -20,6 +20,7 @@ import {
   scanZstdFrames,
 } from '@deepseek-ai/dsh-session-persistence-jsonl/src/zstd.ts'
 import { FIXTURE_REQUEST, FIXTURE_RESPONSE } from './fixtures/pentest-verification-fixture.ts'
+import { REQUEST_PACKET, RESPONSE_PACKET } from './fixtures/pentest-report-evidence-fixture.ts'
 import { describe, expect, it } from 'vitest'
 
 const snapshotsDir = join(dirname(fileURLToPath(import.meta.url)), 'snapshots')
@@ -34,6 +35,9 @@ const ptyConfigPath = fileURLToPath(new URL('../pty.cordis.snapshot.yml', import
 const goalScenarioDir = join(snapshotsDir, 'goal-tools')
 const goalConfigPath = fileURLToPath(new URL('../goal.cordis.snapshot.yml', import.meta.url))
 const pentestScenarioDir = join(snapshotsDir, 'pentest-tools')
+/** Evidence references the report-evidence fixture records, derived from its own content. */
+const REPORT_REQUEST_REF = createHash('sha256').update(REQUEST_PACKET).digest('hex')
+const REPORT_RESPONSE_REF = createHash('sha256').update(RESPONSE_PACKET).digest('hex')
 const pentestConfigPath = fileURLToPath(new URL('../pentest.cordis.snapshot.yml', import.meta.url))
 const verificationScenarioDir = join(snapshotsDir, 'pentest-verification')
 /** Evidence references the verification fixture records, derived from its own content. */
@@ -794,6 +798,12 @@ describe('headless stream-json snapshots', () => {
           .map(record => (record.data as JsonObject | undefined)?.name)
         expect(calls).toEqual(['findings_create', 'report_generate'])
         expect(logs[0]?.content ?? '').toContain('SSH 端口对外开放')
+        // The finding cites the fixture's packet pair by the references the
+        // fixture's own content hashes to; the report contract would refuse a
+        // conclusion with no test procedure, so this is what keeps the scenario
+        // a passing report rather than a refusal.
+        expect(logs[0]?.content ?? '').toContain(REPORT_REQUEST_REF)
+        expect(logs[0]?.content ?? '').toContain(REPORT_RESPONSE_REF)
         // report_generate writes the Word report into the one-shot app's cwd.
         expect(logs[0]?.content ?? '').toContain('pentest-report.docx')
         const reportInfo = await stat(join(cwd, 'pentest-report.docx'))
