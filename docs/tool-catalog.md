@@ -1963,7 +1963,7 @@ Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool
 
 ### `coverage_list`
 
-列出覆盖台账的单元格，可按目标、手法或状态过滤。每个单元格记录该手法对该目标尝试过几次、产出哪些结论、是否被豁免。
+列出覆盖台账的单元格，可按目标、手法或状态过滤。每个单元格记录该手法对该目标尝试过几次、产出哪些结论、是否被豁免。手法类别包括 action 词表的全部类别：playbook 条目声明的新类别会并入矩阵，成为新的覆盖义务。
 
 ```json
 {
@@ -1977,6 +1977,8 @@ Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool
       "type": "string",
       "description": "只列出该手法类别的单元格。",
       "enum": [
+        "local",
+        "file-ops",
         "recon",
         "scan",
         "web-probe",
@@ -1987,7 +1989,8 @@ Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool
         "lateral-movement",
         "persistence",
         "exfiltration",
-        "dos"
+        "dos",
+        "unknown"
       ]
     },
     "status": {
@@ -2022,6 +2025,8 @@ Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool
       "type": "string",
       "description": "手法类别。",
       "enum": [
+        "local",
+        "file-ops",
         "recon",
         "scan",
         "web-probe",
@@ -2032,7 +2037,8 @@ Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool
         "lateral-movement",
         "persistence",
         "exfiltration",
-        "dos"
+        "dos",
+        "unknown"
       ]
     },
     "service": {

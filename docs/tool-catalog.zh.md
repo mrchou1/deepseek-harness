@@ -1965,7 +1965,7 @@ Start a new authorized engagement (replacing any active one) in the recon phase.
 
 ### `coverage_list`
 
-列出覆盖台账的单元格，可按目标、手法或状态过滤。每个单元格记录该手法对该目标尝试过几次、产出哪些结论、是否被豁免。
+列出覆盖台账的单元格，可按目标、手法或状态过滤。每个单元格记录该手法对该目标尝试过几次、产出哪些结论、是否被豁免。手法类别包括 action 词表的全部类别：playbook 条目声明的新类别会并入矩阵，成为新的覆盖义务。
 
 ```json
 {
@@ -1979,6 +1979,8 @@ Start a new authorized engagement (replacing any active one) in the recon phase.
       "type": "string",
       "description": "只列出该手法类别的单元格。",
       "enum": [
+        "local",
+        "file-ops",
         "recon",
         "scan",
         "web-probe",
@@ -1989,7 +1991,8 @@ Start a new authorized engagement (replacing any active one) in the recon phase.
         "lateral-movement",
         "persistence",
         "exfiltration",
-        "dos"
+        "dos",
+        "unknown"
       ]
     },
     "status": {
@@ -2024,6 +2027,8 @@ Start a new authorized engagement (replacing any active one) in the recon phase.
       "type": "string",
       "description": "手法类别。",
       "enum": [
+        "local",
+        "file-ops",
         "recon",
         "scan",
         "web-probe",
@@ -2034,7 +2039,8 @@ Start a new authorized engagement (replacing any active one) in the recon phase.
         "lateral-movement",
         "persistence",
         "exfiltration",
-        "dos"
+        "dos",
+        "unknown"
       ]
     },
     "service": {

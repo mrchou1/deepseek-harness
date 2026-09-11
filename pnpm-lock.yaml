@@ -5662,6 +5662,9 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-playbook-ledger':
+        specifier: workspace:^
+        version: link:../playbook-ledger
       '@deepseek-ai/dsh-process-log':
         specifier: workspace:^
         version: link:../process-log
