@@ -5841,12 +5841,27 @@ importers:
       '@deepseek-ai/dsh-engagement':
         specifier: workspace:^
         version: link:../engagement
+      '@deepseek-ai/dsh-evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@deepseek-ai/dsh-findings':
         specifier: workspace:^
         version: link:../findings
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:^
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../core/system-prompt
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools

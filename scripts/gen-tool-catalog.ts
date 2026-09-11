@@ -458,17 +458,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-findings',
     dir: 'tool-findings',
     source: 'packages/pentest/tool-findings/src/index.ts',
-    requires: ['ctx.tools', 'ctx.findings'],
+    requires: ['ctx.tools', 'ctx.findings', 'ctx.evidence', 'ctx.systemPrompt'],
     writes: ['tool/call', 'tool/result'],
     async mount(ctx) {
       await ctx.plugin(Storage)
       await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
       await ctx.plugin(StorageDomain, { backend: 'json' })
       await ctx.plugin(FindingsService)
+      await ctx.plugin(EvidenceService)
       await ctx.plugin(ToolFindings)
     },
     note:
-      'The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form.',
+      'The findings tool family is the model-facing consumer of the durable findings domain: mutations persist through the storage-domain form, a verification is refused unless the evidence store holds every reference it cites, and the family contributes the pending-conclusions system-prompt section.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-process-log',

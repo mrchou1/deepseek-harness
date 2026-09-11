@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-compaction-basic'
 import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-tools'
 // Type-only: resolves `ctx.get('sessionProjections')` and `ctx.get('tokenMeter')`.
+import type {} from '@deepseek-ai/dsh-findings'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-token-meter'
 
@@ -248,7 +249,8 @@ describe('the shipped Web composition', () => {
         'engagement_close', 'engagement_get', 'engagement_pause', 'engagement_resume',
         'engagement_set_phase', 'engagement_start',
         'exploit_run', 'findings_create', 'findings_delete', 'findings_get', 'findings_list',
-        'findings_update', 'process_log_get', 'process_log_list', 'recon_dns', 'recon_whois',
+        'findings_pending', 'findings_refute', 'findings_update', 'findings_verify',
+        'pentest_verifier', 'process_log_get', 'process_log_list', 'recon_dns', 'recon_whois',
         'report_generate', 'scan_http',
         'scan_screenshot', 'scan_tcp_ports', 'session_event_read', 'session_event_search',
         'session_event_trace', 'session_search', 'session_trace',
@@ -256,6 +258,32 @@ describe('the shipped Web composition', () => {
     } finally {
       await pentest.dispose()
       await standard.dispose()
+    }
+  })
+
+  it('carries an unproved conclusion into the pentest agent’s assembled prompt', async () => {
+    // The verification ledger owns the conclusion, not the transcript: what the
+    // model has asserted and not proved must reach it again every turn.
+    const pentest = await ctx.agents.create({
+      sessionId: SessionId('preset-pentest-pending'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'pentest').then(() => undefined),
+    })
+    try {
+      const finding = await ctx.findings.create({
+        title: '未证实的结论', severity: 'high', affectedTarget: '10.0.0.5',
+        description: '待验证的断言。', phaseSource: 'scan',
+      })
+      const assembly = await ctx.systemPrompt.assemble({ scope: pentest.agent })
+      const prompt = assembly.sections.map(section => section.text).join('\n')
+      expect(prompt).toContain('Unverified conclusions (1)')
+      expect(prompt).toContain(`${finding.id} 未证实的结论 (10.0.0.5, high)`)
+
+      // A proved conclusion leaves no section behind.
+      await ctx.findings.verify(finding.id, { verification: 'verified', verifiedBy: ['a'.repeat(64)] })
+      const proved = await ctx.systemPrompt.assemble({ scope: pentest.agent })
+      expect(proved.sections.map(section => section.text).join('\n')).not.toContain('Unverified conclusions')
+    } finally {
+      await pentest.dispose()
     }
   })
 

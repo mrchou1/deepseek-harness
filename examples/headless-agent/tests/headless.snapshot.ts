@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -18,6 +19,7 @@ import {
   decompressZstdFrame,
   scanZstdFrames,
 } from '@deepseek-ai/dsh-session-persistence-jsonl/src/zstd.ts'
+import { FIXTURE_REQUEST, FIXTURE_RESPONSE } from './fixtures/pentest-verification-fixture.ts'
 import { describe, expect, it } from 'vitest'
 
 const snapshotsDir = join(dirname(fileURLToPath(import.meta.url)), 'snapshots')
@@ -33,6 +35,11 @@ const goalScenarioDir = join(snapshotsDir, 'goal-tools')
 const goalConfigPath = fileURLToPath(new URL('../goal.cordis.snapshot.yml', import.meta.url))
 const pentestScenarioDir = join(snapshotsDir, 'pentest-tools')
 const pentestConfigPath = fileURLToPath(new URL('../pentest.cordis.snapshot.yml', import.meta.url))
+const verificationScenarioDir = join(snapshotsDir, 'pentest-verification')
+/** Evidence references the verification fixture records, derived from its own content. */
+const FIXTURE_REQUEST_REF = createHash('sha256').update(FIXTURE_REQUEST).digest('hex')
+const FIXTURE_RESPONSE_REF = createHash('sha256').update(FIXTURE_RESPONSE).digest('hex')
+const verificationConfigPath = fileURLToPath(new URL('../pentest-verification.cordis.snapshot.yml', import.meta.url))
 const retryScenarioDir = join(snapshotsDir, 'provider-retry')
 const retryConfigPath = fileURLToPath(new URL('../retry.cordis.snapshot.yml', import.meta.url))
 const compactionScenarioDir = join(snapshotsDir, 'compaction-recovery')
@@ -206,6 +213,35 @@ function normalizePentestStream(rawStdout: string, cwd: string): string {
     // written byte count varies between runs; pin the count in the transcript.
     .replace(/（\d+ 字节，共 \d+ 条漏洞）/g, '（{{bytes}} 字节，共 {{findingCount}} 条漏洞）')
     + '\n'
+}
+
+/** Read one nested object field, for projections whose types are not statically known. */
+function nestedField(value: unknown, key: string): unknown {
+  if (typeof value !== 'object' || value === null) return undefined
+  return (value as Record<string, unknown>)[key]
+}
+
+/** Read one nested string field, for projections whose types are not statically known. */
+function nestedString(value: unknown, key: string): string {
+  if (typeof value !== 'object' || value === null) return ''
+  const field = (value as Record<string, unknown>)[key]
+  return typeof field === 'string' ? field : ''
+}
+
+/** The model-facing text of one `tool/result` record, as the tool rendered it. */
+function toolResultText(data: JsonObject): string {
+  const message = data['message']
+  const content = typeof message === 'object' && message !== null
+    ? ((message as Record<string, unknown>)['content'] as unknown[])
+    : []
+  return (content ?? [])
+    .flatMap((block) => {
+      const inner = typeof block === 'object' && block !== null
+        ? ((block as Record<string, unknown>)['content'] as unknown[])
+        : undefined
+      return (inner ?? []).map(part => nestedString(part, 'text'))
+    })
+    .join('\n')
 }
 
 async function scenarioPrompt(dir: string, label: string): Promise<string> {
@@ -770,6 +806,68 @@ describe('headless stream-json snapshots', () => {
     if (refreshing) await writeFile(streamExpected, normalized)
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
     expect(normalized).toContain('PENTEST READY')
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it('replays the verification ledger through the one-shot app', async () => {
+    const prompt = await scenarioPrompt(verificationScenarioDir, 'pentest-verification')
+    const streamExpected = join(verificationScenarioDir, 'stream-json.expected.jsonl')
+    let runCwd = ''
+    const result = await runLoaderSmoke({
+      label: 'pentest verification headless stream-json snapshot',
+      tempDirPrefix: 'headless-snapshot-pentest-verification-',
+      binScript,
+      libBinScript: binScript,
+      configPath: verificationConfigPath,
+      binArgs: [verificationConfigPath, prompt],
+      tsconfigPath,
+      env: {
+        DSH_SNAPSHOT: 'replay',
+        DSH_SNAPSHOT_FILE: join(verificationScenarioDir, 'session.jsonl'),
+        DSH_SNAPSHOT_OVERRIDE: join(verificationScenarioDir, 'replay.override.json'),
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
+      prepare: (cwd) => { runCwd = cwd },
+      inspect: async (cwd) => {
+        const logs = await persistedLogs(cwd)
+        expect(logs).toHaveLength(1)
+        const records = parseJsonl(logs[0]?.content ?? '')
+        const calls = records.filter(record => record.type === 'tool/call')
+          .map(record => (record.data as JsonObject | undefined)?.name)
+        expect(calls).toEqual(['findings_pending', 'findings_verify', 'report_generate'])
+
+        // The unproved claim reaches the model every turn until it is settled:
+        // the first request's assembled system prompt carries the pending list,
+        // and the request after the settlement carries no such section.
+        const systems = records.filter(record => record.type === 'request/header')
+          .map(record => nestedString(nestedField(record.data as JsonObject | undefined, 'header'), 'system'))
+        expect(systems.length).toBeGreaterThanOrEqual(2)
+        expect(systems[0]).toContain('Unverified conclusions (1)')
+        expect(systems[0]).toContain('越权访问他人订单')
+        expect(systems.at(-1)).not.toContain('Unverified conclusions')
+
+        // The settlement records both fixture packets as its evidence, and the
+        // pending list the model read carried the claim.
+        const rendered = records.filter(record => record.type === 'tool/result')
+          .map(record => toolResultText((record.data as JsonObject | undefined) ?? {}))
+          .join('\n')
+        expect(rendered).toContain('越权访问他人订单')
+        expect(rendered).toContain(FIXTURE_REQUEST_REF)
+        expect(rendered).toContain(FIXTURE_RESPONSE_REF)
+        expect(rendered).toContain('"verification": "verified"')
+        expect(rendered).toContain('"hypothesis": "订单查询接口可能未校验订单归属，普通用户可读取他人订单。"')
+
+        // The report is the endpoint: it exists and presents the single finding.
+        const reportInfo = await stat(join(cwd, 'pentest-report.docx'))
+        expect(reportInfo.size).toBeGreaterThan(0)
+        expect(logs[0]?.content ?? '').toContain('共 1 条漏洞')
+      },
+    })
+
+    expect(result.stderr).toBe('')
+    const normalized = normalizePentestStream(result.stdout, runCwd)
+    if (refreshing) await writeFile(streamExpected, normalized)
+    expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
+    expect(normalized).toContain('VERIFICATION COMPLETE')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
   it('replays two fresh Ralph rounds through the one-shot app', async () => {

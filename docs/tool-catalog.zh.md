@@ -34,7 +34,7 @@
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`、`ctx.workflowEngine`、`ctx.subagents`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents every fresh round)` | `tool/call`、`tool/result`、`workflow and child session events during execution` | - | 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。 |
 | `@deepseek-ai/dsh-tool-recon` | `recon_dns`、`recon_whois` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 侦察工具家族消费渗透测试运行时 seam；缺少工具二进制文件会让调用在执行时失败。交战规则护栏对目标进行门控。 |
 | `@deepseek-ai/dsh-tool-engagement` | `engagement_close`、`engagement_get`、`engagement_pause`、`engagement_resume`、`engagement_set_phase`、`engagement_start` | `ctx.tools`、`ctx.engagement` | `tool/call`、`tool/result` | - | 交战工具驱动生命周期：start／get／set-phase／pause／resume／close。推进阶段会解锁后续每个阶段；交战规则护栏仍按范围和阶段对每个阶段工具进行门控。 |
-| `@deepseek-ai/dsh-tool-findings` | `findings_create`、`findings_delete`、`findings_get`、`findings_list`、`findings_update` | `ctx.tools`、`ctx.findings` | `tool/call`、`tool/result` | - | 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。 |
+| `@deepseek-ai/dsh-tool-findings` | `findings_create`、`findings_delete`、`findings_get`、`findings_list`、`findings_pending`、`findings_refute`、`findings_update`、`findings_verify` | `ctx.tools`、`ctx.findings` | `tool/call`、`tool/result` | - | 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。 |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`、`process_log_list` | `ctx.tools`、`ctx.processLog` | `tool/call`、`tool/result` | - | 过程台账工具读取「交战规则策略裁定过的每个调用」的持久台账；台账本身在宿主平面写入，因此这些工具只读。 |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`、`scan_screenshot`、`scan_tcp_ports` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 扫描工具家族消费渗透测试运行时 seam；缺少扫描器二进制文件会让调用在执行时失败。scan_http 把请求包与响应包捕获为证据，scan_screenshot 记录无头浏览器图像。交战规则护栏对目标进行门控。 |
 | `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`、`ctx.findings`、`ctx.evidence` | `tool/call`、`tool/result` | - | 报告工具把持久化的发现与证据库渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称用于页眉。 |
@@ -1665,6 +1665,67 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
 
+### `findings_pending`
+
+列出尚未证实的结论（verification 为 unverified），可按目标与阶段过滤。每一轮都应清空这份清单：先取得证据再调用 findings_verify，或确证不成立时调用 findings_refute。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "只列出该目标上的结论。"
+    },
+    "phaseSource": {
+      "type": "string",
+      "description": "只列出在该生命周期阶段记录的结论。",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    }
+  }
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_refute`
+
+把一条漏洞记录标记为已推翻，并附上推翻它所需的证据引用。引用的证据必须真实存在于证据库，且列表不能为空；断言本身会保留在 hypothesis 中，便于复盘。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "verifiedBy": {
+      "type": "array",
+      "description": "推翻该结论的证据引用列表（非空，且必须已存在于证据库）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hypothesis": {
+      "type": "string",
+      "description": "被推翻的主张原文。"
+    }
+  },
+  "required": [
+    "id",
+    "verifiedBy",
+    "hypothesis"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
 ### `findings_update`
 
 把可变字段合并到一条既有渗透测试发现上；未知 id 会让调用失败。
@@ -1739,6 +1800,38 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。
 
 <a id="deepseek-aidsh-tool-scan"></a>
+
+### `findings_verify`
+
+把一条漏洞记录标记为已证实，并附上证实它所需的证据引用。引用的证据必须真实存在于证据库，且列表不能为空；未证实的断言请先用 recon/scan/exploit 工具取得证据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "verifiedBy": {
+      "type": "array",
+      "description": "证实该结论的证据引用列表（非空，且必须已存在于证据库）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hypothesis": {
+      "type": "string",
+      "description": "证实前所断言的主张原文（可选）。"
+    }
+  },
+  "required": [
+    "id",
+    "verifiedBy"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
 
 ## `@deepseek-ai/dsh-tool-process-log`
 

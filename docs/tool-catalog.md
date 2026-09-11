@@ -32,7 +32,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
 | `@deepseek-ai/dsh-tool-recon` | `recon_dns`, `recon_whois` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The recon tool family consumes the pentest runtime seam; a missing tool binary fails the call at execution time. The rules-of-engagement guard gates the target. |
 | `@deepseek-ai/dsh-tool-engagement` | `engagement_close`, `engagement_get`, `engagement_pause`, `engagement_resume`, `engagement_set_phase`, `engagement_start` | `ctx.tools`, `ctx.engagement` | `tool/call`, `tool/result` | - | The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase. |
-| `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_update` | `ctx.tools`, `ctx.findings` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form. |
+| `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_pending`, `findings_refute`, `findings_update`, `findings_verify` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain: mutations persist through the storage-domain form, a verification is refused unless the evidence store holds every reference it cites, and the family contributes the pending-conclusions system-prompt section. |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`, `process_log_list` | `ctx.tools`, `ctx.processLog` | `tool/call`, `tool/result` | - | The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read. |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`, `scan_screenshot`, `scan_tcp_ports` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target. |
 | `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`, `ctx.findings`, `ctx.evidence` | `tool/call`, `tool/result` | - | The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header. |
@@ -1661,6 +1661,67 @@ List all pentest findings in durable insertion order.
 
 Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
 
+### `findings_pending`
+
+列出尚未证实的结论（verification 为 unverified），可按目标与阶段过滤。每一轮都应清空这份清单：先取得证据再调用 findings_verify，或确证不成立时调用 findings_refute。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "只列出该目标上的结论。"
+    },
+    "phaseSource": {
+      "type": "string",
+      "description": "只列出在该生命周期阶段记录的结论。",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    }
+  }
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+### `findings_refute`
+
+把一条漏洞记录标记为已推翻，并附上推翻它所需的证据引用。引用的证据必须真实存在于证据库，且列表不能为空；断言本身会保留在 hypothesis 中，便于复盘。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "verifiedBy": {
+      "type": "array",
+      "description": "推翻该结论的证据引用列表（非空，且必须已存在于证据库）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hypothesis": {
+      "type": "string",
+      "description": "被推翻的主张原文。"
+    }
+  },
+  "required": [
+    "id",
+    "verifiedBy",
+    "hypothesis"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
 ### `findings_update`
 
 合并更新一条已存在的渗透测试漏洞记录；未知 id 将失败。标题、描述与修复建议请使用中文。
@@ -1732,7 +1793,39 @@ Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool
 
 Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
 
-The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form.
+### `findings_verify`
+
+把一条漏洞记录标记为已证实，并附上证实它所需的证据引用。引用的证据必须真实存在于证据库，且列表不能为空；未证实的断言请先用 recon/scan/exploit 工具取得证据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "verifiedBy": {
+      "type": "array",
+      "description": "证实该结论的证据引用列表（非空，且必须已存在于证据库）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hypothesis": {
+      "type": "string",
+      "description": "证实前所断言的主张原文（可选）。"
+    }
+  },
+  "required": [
+    "id",
+    "verifiedBy"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
+
+The findings tool family is the model-facing consumer of the durable findings domain: mutations persist through the storage-domain form, a verification is refused unless the evidence store holds every reference it cites, and the family contributes the pending-conclusions system-prompt section.
 
 <a id="deepseek-aidsh-tool-process-log"></a>
 
