@@ -74,6 +74,7 @@
     "@deepseek-ai/dsh-tool-report": "workspace:^",
     "@deepseek-ai/dsh-tool-scan": "workspace:^",
     "@deepseek-ai/dsh-schedule": "workspace:^",
+    "@deepseek-ai/dsh-tool-session-query": "workspace:^",
     "@deepseek-ai/dsh-tool-skill": "workspace:^",
     "@deepseek-ai/dsh-tool-str-replace-editor": "workspace:^",
     "@deepseek-ai/dsh-tool-subagent": "workspace:^",

@@ -26,6 +26,13 @@ const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 /** The shipped Web surface: the dsh-base and dsh-web-app bundle patches over an empty preset root. */
 const BASE_PATCH = join(REPO_ROOT, 'packages/bundle/base/cordis.patch.yml')
 const WEB_PATCH = join(REPO_ROOT, 'packages/bundle/web-app/cordis.patch.yml')
+/**
+ * The pentest domain bundle the shipped `web` profile mounts over web-app: its
+ * host-plane rows (runtime provider, engagement, findings, evidence, ROE
+ * policy) are what the `pentest` preset's tool rows resolve, so a composition
+ * without them cannot mount that preset at all.
+ */
+const PENTEST_PATCH = join(REPO_ROOT, 'packages/bundle/pentest/cordis.patch.yml')
 /** The installation anchor whose dependency surface the preset module fallback mirrors. */
 const INSTALL_ANCHOR = join(REPO_ROOT, 'apps/cli/package.json')
 const EXAMPLES_INSTALL_ANCHOR = join(REPO_ROOT, 'examples/package.json')
@@ -42,7 +49,7 @@ const MINIMAL_BASH_DESCRIPTION = `Run commands in a bash shell
 /**
  * Boot the shipped Web composition, minus the rows that would bind a port,
  * touch the network, or write outside the test. Everything that decides an
- * agent's capabilities is the real thing, including both shipped presets.
+ * agent's capabilities is the real thing, including every shipped preset.
  */
 async function bootWeb(
   settingsFile: string,
@@ -53,6 +60,7 @@ async function bootWeb(
   const patches: PatchOptions[] = [
     ...loadOverlayPatches('dsh-test', BASE_PATCH),
     ...loadOverlayPatches('dsh-test', WEB_PATCH),
+    ...loadOverlayPatches('dsh-test', PENTEST_PATCH),
     // The settings row defaults to `$DSH_HOME/settings.yaml`. Left alone it
     // reads the developer's own document — and since the default preset is a
     // setting, a stored `agent-presets.default` would decide this file's
@@ -184,10 +192,10 @@ describe('the shipped Web composition', () => {
     }
   })
 
-  it('supplies both shipped presets, and only those, from the system root', async () => {
+  it('supplies every shipped preset, and only those, from the system root', async () => {
     const listed = await ctx.agentPresets.list()
 
-    expect(listed.map(preset => preset.id).sort()).toEqual(['code', 'cordis', 'minimal', 'standard'])
+    expect(listed.map(preset => preset.id).sort()).toEqual(['code', 'cordis', 'minimal', 'pentest', 'standard'])
     expect(listed.every(preset => preset.trust === 'system')).toBe(true)
     expect(ctx.agentPresets.defaultId).toBe('standard')
   })
@@ -211,6 +219,41 @@ describe('the shipped Web composition', () => {
       ])
     } finally {
       await handle.dispose()
+    }
+  })
+
+  it('composes the pentest agent as a capability-additive superset of `standard`', async () => {
+    // The pentest preset's contract: it ADDS the pentest domain surface and the
+    // engagement-specific rows, and never removes a general-purpose capability.
+    // Authorization is enforced by action policy on the host plane, so a tool
+    // missing from this comparison would be a design regression, not a safety
+    // measure. Both agents mount in one process to compare the real catalogs.
+    const standard = await ctx.agents.create({
+      sessionId: SessionId('preset-standard-vs-pentest'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'standard').then(() => undefined),
+    })
+    const pentest = await ctx.agents.create({
+      sessionId: SessionId('preset-pentest'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'pentest').then(() => undefined),
+    })
+    try {
+      const standardTools = toolNames(ctx, standard.agent)
+      const pentestTools = toolNames(ctx, pentest.agent)
+      expect(standardTools.length).toBeGreaterThan(10)
+      // Every general-purpose tool the standard agent has, the pentest agent has.
+      expect(pentestTools).toEqual(expect.arrayContaining(standardTools))
+      // The pentest-only additions, exactly: the domain tools plus the
+      // session-history reads an engagement needs to re-read its own process.
+      expect(pentestTools.filter(name => !standardTools.includes(name))).toEqual([
+        'engagement_close', 'engagement_get', 'engagement_set_phase', 'engagement_start',
+        'exploit_run', 'findings_create', 'findings_delete', 'findings_get', 'findings_list',
+        'findings_update', 'recon_dns', 'recon_whois', 'report_generate', 'scan_http',
+        'scan_screenshot', 'scan_tcp_ports', 'session_event_read', 'session_event_search',
+        'session_event_trace', 'session_search', 'session_trace',
+      ])
+    } finally {
+      await pentest.dispose()
+      await standard.dispose()
     }
   })
 
