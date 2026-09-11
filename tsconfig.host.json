@@ -163,6 +163,7 @@
     { "path": "./packages/pentest/process-log" },
     { "path": "./packages/pentest/report-sections" },
     { "path": "./packages/pentest/roe-policy" },
+    { "path": "./packages/pentest/skill-playbook" },
     { "path": "./packages/pentest/tool-engagement" },
     { "path": "./packages/pentest/tool-coverage" },
     { "path": "./packages/pentest/tool-exploit" },

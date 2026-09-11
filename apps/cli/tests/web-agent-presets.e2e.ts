@@ -334,6 +334,59 @@ describe('the shipped Web composition', () => {
     }
   })
 
+  it('delivers a published playbook entry to the pentest agent as a loadable skill', async () => {
+    // The playbook reaches the model through the skill path that already
+    // exists: the preset's provider makes each published entry a loadable
+    // skill, and a publication or a retirement invalidates the catalog.
+    const pentest = await ctx.agents.create({
+      sessionId: SessionId('preset-pentest-playbook'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'pentest').then(() => undefined),
+    })
+    try {
+      expect((await ctx.skills.list({ scope: pentest.agent })).map(skill => skill.name))
+        .not.toContain('jwt-alg-confusion')
+
+      const proposal = await ctx.playbook.propose({
+        entryId: 'jwt-alg-confusion',
+        kind: 'create',
+        provenance: 'engagement',
+        rationale: '本次交战用它拿到了越权',
+        proposedBy: 'pentest-knowledge-distiller',
+        content: {
+          title: 'JWT 算法混淆',
+          scene: 'web',
+          techniques: ['web-fuzz'],
+          preconditions: ['目标颁发 JWT'],
+          steps: ['取一个合法 token', '把 alg 改为 none 后重放'],
+          decisionPoints: ['重放被拒时改试 HS256 空密钥'],
+          evidenceRequirements: ['原始 token 与篡改后 token 的请求/返回报文'],
+          remediation: '服务端固定算法并校验签名。',
+          references: [],
+          confidence: 'medium',
+        },
+      })
+      await ctx.playbook.publish({ proposalId: proposal.id, approvedBy: 'operator' })
+
+      const catalog = (await ctx.skills.list({ scope: pentest.agent })).filter(skill => skill.provider === 'playbook')
+      expect(catalog.map(skill => skill.name)).toEqual(['jwt-alg-confusion'])
+      expect(catalog[0]?.description).toBe('JWT 算法混淆')
+      const loaded = await ctx.skills.get('jwt-alg-confusion', { scope: pentest.agent })
+      expect(loaded?.content).toContain('1. 取一个合法 token')
+      expect(loaded?.content).toContain('Version 1 (engagement)')
+
+      // Retiring a published entry withdraws it from what the model is taught.
+      const retirement = await ctx.playbook.propose({
+        entryId: 'jwt-alg-confusion', kind: 'retire', provenance: 'engagement',
+        rationale: '反复尝试都没有产出已验证结论', proposedBy: 'operator',
+      })
+      await ctx.playbook.publish({ proposalId: retirement.id, approvedBy: 'operator' })
+      expect((await ctx.skills.list({ scope: pentest.agent })).map(skill => skill.name))
+        .not.toContain('jwt-alg-confusion')
+    } finally {
+      await pentest.dispose()
+    }
+  })
+
   it('composes the exact RL prompt and two tools from `minimal`', async () => {
     const handle = await ctx.agents.create({
       sessionId: SessionId('preset-minimal'),
