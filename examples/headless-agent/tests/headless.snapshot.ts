@@ -843,7 +843,7 @@ describe('headless stream-json snapshots', () => {
         const records = parseJsonl(logs[0]?.content ?? '')
         const calls = records.filter(record => record.type === 'tool/call')
           .map(record => (record.data as JsonObject | undefined)?.name)
-        expect(calls).toEqual(['findings_pending', 'findings_verify', 'report_generate'])
+        expect(calls).toEqual(['findings_pending', 'findings_verify', 'report_validate', 'report_generate'])
 
         // The unproved claim reaches the model every turn until it is settled:
         // the first request's assembled system prompt carries the pending list,
@@ -865,6 +865,10 @@ describe('headless stream-json snapshots', () => {
         expect(rendered).toContain(FIXTURE_RESPONSE_REF)
         expect(rendered).toContain('"verification": "verified"')
         expect(rendered).toContain('"hypothesis": "订单查询接口可能未校验订单归属，普通用户可读取他人订单。"')
+
+        // The contract gate ran before the write and passed: the settled claim
+        // carries a test procedure, a rating, and Chinese prose.
+        expect(rendered).toContain('报告校验通过')
 
         // The report is the endpoint: it exists and presents the single finding.
         const reportInfo = await stat(join(cwd, 'pentest-report.docx'))
