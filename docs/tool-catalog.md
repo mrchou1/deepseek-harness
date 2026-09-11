@@ -31,8 +31,9 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
 | `@deepseek-ai/dsh-tool-recon` | `recon_dns`, `recon_whois` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The recon tool family consumes the pentest runtime seam; a missing tool binary fails the call at execution time. The rules-of-engagement guard gates the target. |
-| `@deepseek-ai/dsh-tool-engagement` | `engagement_close`, `engagement_get`, `engagement_set_phase`, `engagement_start` | `ctx.tools`, `ctx.engagement` | `tool/call`, `tool/result` | - | The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase. |
+| `@deepseek-ai/dsh-tool-engagement` | `engagement_close`, `engagement_get`, `engagement_pause`, `engagement_resume`, `engagement_set_phase`, `engagement_start` | `ctx.tools`, `ctx.engagement` | `tool/call`, `tool/result` | - | The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase. |
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_update` | `ctx.tools`, `ctx.findings` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form. |
+| `@deepseek-ai/dsh-tool-process-log` | `process_log_get`, `process_log_list` | `ctx.tools`, `ctx.processLog` | `tool/call`, `tool/result` | - | The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read. |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`, `scan_screenshot`, `scan_tcp_ports` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target. |
 | `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`, `ctx.findings`, `ctx.evidence` | `tool/call`, `tool/result` | - | The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header. |
 | `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The exploit tool runs a shell command over the pentest runtime seam; the rules-of-engagement guard gates phase and scope, and a pre-execute listener pauses every exploit call for operator approval. |
@@ -1296,6 +1297,32 @@ Read the active engagement, or null when none is started.
 
 Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
 
+### `engagement_pause`
+
+Halt the active engagement: every networked action and every action above tier 0 is refused until it is resumed.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_resume`
+
+Resume the active engagement after a pause.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
 ### `engagement_set_phase`
 
 Advance or rewind the active engagement to a lifecycle phase.
@@ -1375,6 +1402,108 @@ Start a new authorized engagement (replacing any active one) in the recon phase.
     "contact": {
       "type": "string",
       "description": "Human point of contact."
+    },
+    "forbiddenTechniques": {
+      "type": "array",
+      "description": "Technique classes this engagement forbids outright.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "local",
+          "file-ops",
+          "recon",
+          "scan",
+          "web-probe",
+          "web-fuzz",
+          "exploit",
+          "credential-attack",
+          "credential-dump",
+          "lateral-movement",
+          "persistence",
+          "exfiltration",
+          "dos",
+          "unknown"
+        ]
+      }
+    },
+    "tierDefaults": {
+      "type": "object",
+      "description": "Disposition at each risk tier; omitted tiers keep the shipped defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "0": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "1": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "2": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "3": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        }
+      }
+    },
+    "maxRiskTier": {
+      "type": "integer",
+      "description": "Highest tier tolerated; above it, always deny.",
+      "enum": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "unknownActionTier": {
+      "type": "integer",
+      "description": "Tier for an action no rule recognized.",
+      "enum": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "timeWindow": {
+      "type": "object",
+      "description": "Daily window testing is permitted in; `from` after `to` spans midnight.",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
     }
   },
   "required": [
@@ -1398,14 +1527,15 @@ The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing t
 
 ### `findings_create`
 
-Create one pentest finding and store it durably. Defaults status to open and empty lists for evidence and references.
+创建一条渗透测试漏洞记录并持久化。漏洞标题、描述与修复建议必须使用中文。状态默认 open，证据与参考默认为空列表。
 
 ```json
 {
   "type": "object",
   "properties": {
     "title": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞标题（使用中文）"
     },
     "severity": {
       "type": "string",
@@ -1419,16 +1549,18 @@ Create one pentest finding and store it durably. Defaults status to open and emp
     },
     "cvss": {
       "type": "number",
-      "description": "CVSS base score 0-10; omit when not scored."
+      "description": "CVSS 基础评分 0-10；未评分可省略。"
     },
     "affectedTarget": {
       "type": "string"
     },
     "description": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞描述（使用中文，说明漏洞成因与影响）"
     },
     "evidenceRefs": {
       "type": "array",
+      "description": "证据引用列表（请求包/返回包/命令输出/截图）",
       "items": {
         "type": "string"
       }
@@ -1444,7 +1576,8 @@ Create one pentest finding and store it durably. Defaults status to open and emp
       ]
     },
     "recommendation": {
-      "type": "string"
+      "type": "string",
+      "description": "修复建议（使用中文）"
     },
     "references": {
       "type": "array",
@@ -1454,7 +1587,7 @@ Create one pentest finding and store it durably. Defaults status to open and emp
     },
     "phaseSource": {
       "type": "string",
-      "description": "Lifecycle phase that discovered this finding.",
+      "description": "发现该漏洞的生命周期阶段。",
       "enum": [
         "recon",
         "scan",
@@ -1530,7 +1663,7 @@ Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool
 
 ### `findings_update`
 
-Merge mutable fields onto an existing pentest finding; unknown ids fail the call.
+合并更新一条已存在的渗透测试漏洞记录；未知 id 将失败。标题、描述与修复建议请使用中文。
 
 ```json
 {
@@ -1540,7 +1673,8 @@ Merge mutable fields onto an existing pentest finding; unknown ids fail the call
       "type": "string"
     },
     "title": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞标题（使用中文）"
     },
     "severity": {
       "type": "string",
@@ -1559,10 +1693,12 @@ Merge mutable fields onto an existing pentest finding; unknown ids fail the call
       "type": "string"
     },
     "description": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞描述（使用中文）"
     },
     "evidenceRefs": {
       "type": "array",
+      "description": "证据引用列表（请求包/返回包/命令输出/截图）",
       "items": {
         "type": "string"
       }
@@ -1578,7 +1714,8 @@ Merge mutable fields onto an existing pentest finding; unknown ids fail the call
       ]
     },
     "recommendation": {
-      "type": "string"
+      "type": "string",
+      "description": "修复建议（使用中文）"
     },
     "references": {
       "type": "array",
@@ -1596,6 +1733,112 @@ Merge mutable fields onto an existing pentest finding; unknown ids fail the call
 Source: [`packages/pentest/tool-findings/src/index.ts`](../packages/pentest/tool-findings/src/index.ts)
 
 The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form.
+
+<a id="deepseek-aidsh-tool-process-log"></a>
+
+## `@deepseek-ai/dsh-tool-process-log`
+
+### `process_log_get`
+
+Read one process-ledger row by its ledger number.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "description": "The row number as process_log_list reports it."
+    }
+  },
+  "required": [
+    "seq"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-process-log/src/index.ts`](../packages/pentest/tool-process-log/src/index.ts)
+
+### `process_log_list`
+
+List the engagement process ledger: one row per call the rules-of-engagement policy judged, oldest first, with its target, technique, phase, verdict, approval, duration, and evidence references. Every filter is optional and all stated filters must match.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "A target the action named."
+    },
+    "tool": {
+      "type": "string",
+      "description": "The registered tool name."
+    },
+    "technique": {
+      "type": "string",
+      "description": "The technique the action performs.",
+      "enum": [
+        "local",
+        "file-ops",
+        "recon",
+        "scan",
+        "web-probe",
+        "web-fuzz",
+        "exploit",
+        "credential-attack",
+        "credential-dump",
+        "lateral-movement",
+        "persistence",
+        "exfiltration",
+        "dos",
+        "unknown"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "description": "The engagement phase at decision time.",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "description": "The verdict recorded for the call.",
+      "enum": [
+        "allowed",
+        "denied",
+        "asked",
+        "approved",
+        "rejected"
+      ]
+    },
+    "engagementId": {
+      "type": "string",
+      "description": "The engagement the action happened under."
+    },
+    "since": {
+      "type": "string",
+      "description": "Earliest time to include, ISO-8601 (e.g. 2026-06-01T10:00:00Z)."
+    },
+    "until": {
+      "type": "string",
+      "description": "Latest time to include, ISO-8601."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Rows to return, oldest first; default 100, maximum 1000."
+    }
+  }
+}
+```
+
+Source: [`packages/pentest/tool-process-log/src/index.ts`](../packages/pentest/tool-process-log/src/index.ts)
+
+The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read.
 
 <a id="deepseek-aidsh-tool-scan"></a>
 
@@ -1693,7 +1936,7 @@ The scan tool family consumes the pentest runtime seam; a missing scanner binary
 
 ### `report_generate`
 
-Generate a Chinese-language Word (.docx) pentest report from the durable findings and evidence stores, write it to disk, and return its path.
+生成中文 Word（.docx）渗透测试报告：基于持久化的漏洞与证据记录，写入磁盘并返回路径。
 
 ```json
 {

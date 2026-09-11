@@ -33,8 +33,9 @@
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`、`ctx.lsp`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，因此其模型可见 schema 在更换提供方时保持稳定。运行时要求已注册提供方，例如 `@deepseek-ai/dsh-lsp-stdio`；如果没有提供方，查询会返回结构化 `LSP_UNAVAILABLE` 错误，而不会改变 schema。 |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`、`ctx.workflowEngine`、`ctx.subagents`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents every fresh round)` | `tool/call`、`tool/result`、`workflow and child session events during execution` | - | 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。 |
 | `@deepseek-ai/dsh-tool-recon` | `recon_dns`、`recon_whois` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 侦察工具家族消费渗透测试运行时 seam；缺少工具二进制文件会让调用在执行时失败。交战规则护栏对目标进行门控。 |
-| `@deepseek-ai/dsh-tool-engagement` | `engagement_close`、`engagement_get`、`engagement_set_phase`、`engagement_start` | `ctx.tools`、`ctx.engagement` | `tool/call`、`tool/result` | - | 交战工具驱动生命周期：start／get／set-phase／close。推进阶段会解锁后续每个阶段；交战规则护栏仍按范围和阶段对每个阶段工具进行门控。 |
+| `@deepseek-ai/dsh-tool-engagement` | `engagement_close`、`engagement_get`、`engagement_pause`、`engagement_resume`、`engagement_set_phase`、`engagement_start` | `ctx.tools`、`ctx.engagement` | `tool/call`、`tool/result` | - | 交战工具驱动生命周期：start／get／set-phase／pause／resume／close。推进阶段会解锁后续每个阶段；交战规则护栏仍按范围和阶段对每个阶段工具进行门控。 |
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`、`findings_delete`、`findings_get`、`findings_list`、`findings_update` | `ctx.tools`、`ctx.findings` | `tool/call`、`tool/result` | - | 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。 |
+| `@deepseek-ai/dsh-tool-process-log` | `process_log_get`、`process_log_list` | `ctx.tools`、`ctx.processLog` | `tool/call`、`tool/result` | - | 过程台账工具读取「交战规则策略裁定过的每个调用」的持久台账；台账本身在宿主平面写入，因此这些工具只读。 |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`、`scan_screenshot`、`scan_tcp_ports` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 扫描工具家族消费渗透测试运行时 seam；缺少扫描器二进制文件会让调用在执行时失败。scan_http 把请求包与响应包捕获为证据，scan_screenshot 记录无头浏览器图像。交战规则护栏对目标进行门控。 |
 | `@deepseek-ai/dsh-tool-report` | `report_generate` | `ctx.tools`、`ctx.findings`、`ctx.evidence` | `tool/call`、`tool/result` | - | 报告工具把持久化的发现与证据库渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称用于页眉。 |
 | `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | exploit 工具通过渗透测试运行时 seam 运行 shell 命令；交战规则护栏对阶段与范围进行门控，pre-execute 监听器会暂停每次 exploit 调用以等待操作者审批。 |
@@ -1300,6 +1301,32 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 来源：[`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
 
+### `engagement_pause`
+
+暂停当前交战：在恢复之前，所有触网动作以及所有高于 tier 0 的动作都会被拒绝。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
+### `engagement_resume`
+
+恢复暂停后的当前交战。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/pentest/tool-engagement/src/index.ts`](../packages/pentest/tool-engagement/src/index.ts)
+
 ### `engagement_set_phase`
 
 把当前交战推进或回退到某个生命周期阶段。
@@ -1379,6 +1406,108 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     "contact": {
       "type": "string",
       "description": "Human point of contact."
+    },
+    "forbiddenTechniques": {
+      "type": "array",
+      "description": "Technique classes this engagement forbids outright.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "local",
+          "file-ops",
+          "recon",
+          "scan",
+          "web-probe",
+          "web-fuzz",
+          "exploit",
+          "credential-attack",
+          "credential-dump",
+          "lateral-movement",
+          "persistence",
+          "exfiltration",
+          "dos",
+          "unknown"
+        ]
+      }
+    },
+    "tierDefaults": {
+      "type": "object",
+      "description": "Disposition at each risk tier; omitted tiers keep the shipped defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "0": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "1": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "2": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "3": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        }
+      }
+    },
+    "maxRiskTier": {
+      "type": "integer",
+      "description": "Highest tier tolerated; above it, always deny.",
+      "enum": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "unknownActionTier": {
+      "type": "integer",
+      "description": "Tier for an action no rule recognized.",
+      "enum": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "timeWindow": {
+      "type": "object",
+      "description": "Daily window testing is permitted in; `from` after `to` spans midnight.",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
     }
   },
   "required": [
@@ -1409,7 +1538,8 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
   "type": "object",
   "properties": {
     "title": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞标题（使用中文）"
     },
     "severity": {
       "type": "string",
@@ -1423,16 +1553,18 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     },
     "cvss": {
       "type": "number",
-      "description": "CVSS base score 0-10; omit when not scored."
+      "description": "CVSS 基础评分 0-10；未评分可省略。"
     },
     "affectedTarget": {
       "type": "string"
     },
     "description": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞描述（使用中文，说明漏洞成因与影响）"
     },
     "evidenceRefs": {
       "type": "array",
+      "description": "证据引用列表（请求包/返回包/命令输出/截图）",
       "items": {
         "type": "string"
       }
@@ -1448,7 +1580,8 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
       ]
     },
     "recommendation": {
-      "type": "string"
+      "type": "string",
+      "description": "修复建议（使用中文）"
     },
     "references": {
       "type": "array",
@@ -1458,7 +1591,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     },
     "phaseSource": {
       "type": "string",
-      "description": "Lifecycle phase that discovered this finding.",
+      "description": "发现该漏洞的生命周期阶段。",
       "enum": [
         "recon",
         "scan",
@@ -1544,7 +1677,8 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
       "type": "string"
     },
     "title": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞标题（使用中文）"
     },
     "severity": {
       "type": "string",
@@ -1563,10 +1697,12 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
       "type": "string"
     },
     "description": {
-      "type": "string"
+      "type": "string",
+      "description": "漏洞描述（使用中文）"
     },
     "evidenceRefs": {
       "type": "array",
+      "description": "证据引用列表（请求包/返回包/命令输出/截图）",
       "items": {
         "type": "string"
       }
@@ -1582,7 +1718,8 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
       ]
     },
     "recommendation": {
-      "type": "string"
+      "type": "string",
+      "description": "修复建议（使用中文）"
     },
     "references": {
       "type": "array",
@@ -1602,6 +1739,108 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 发现工具家族是持久化发现域面向模型的消费方；变更通过存储域的形式持久化。
 
 <a id="deepseek-aidsh-tool-scan"></a>
+
+## `@deepseek-ai/dsh-tool-process-log`
+
+### `process_log_get`
+
+按台账编号读取一条过程台账记录。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "description": "The row number as process_log_list reports it."
+    }
+  },
+  "required": [
+    "seq"
+  ]
+}
+```
+
+来源：[`packages/pentest/tool-process-log/src/index.ts`](../packages/pentest/tool-process-log/src/index.ts)
+
+### `process_log_list`
+
+列出交战过程台账：交战规则策略裁定过的每个调用一行，从旧到新，包含目标、手法、阶段、裁定、审批、时长与证据引用。所有过滤条件均可选，给出的条件必须同时满足。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "A target the action named."
+    },
+    "tool": {
+      "type": "string",
+      "description": "The registered tool name."
+    },
+    "technique": {
+      "type": "string",
+      "description": "The technique the action performs.",
+      "enum": [
+        "local",
+        "file-ops",
+        "recon",
+        "scan",
+        "web-probe",
+        "web-fuzz",
+        "exploit",
+        "credential-attack",
+        "credential-dump",
+        "lateral-movement",
+        "persistence",
+        "exfiltration",
+        "dos",
+        "unknown"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "description": "The engagement phase at decision time.",
+      "enum": [
+        "recon",
+        "scan",
+        "exploit",
+        "report"
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "description": "The verdict recorded for the call.",
+      "enum": [
+        "allowed",
+        "denied",
+        "asked",
+        "approved",
+        "rejected"
+      ]
+    },
+    "engagementId": {
+      "type": "string",
+      "description": "The engagement the action happened under."
+    },
+    "since": {
+      "type": "string",
+      "description": "Earliest time to include, ISO-8601 (e.g. 2026-06-01T10:00:00Z)."
+    },
+    "until": {
+      "type": "string",
+      "description": "Latest time to include, ISO-8601."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Rows to return, oldest first; default 100, maximum 1000."
+    }
+  }
+}
+```
+
+来源：[`packages/pentest/tool-process-log/src/index.ts`](../packages/pentest/tool-process-log/src/index.ts)
 
 ## `@deepseek-ai/dsh-tool-scan`
 

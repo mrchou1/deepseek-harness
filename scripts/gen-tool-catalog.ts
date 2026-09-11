@@ -70,9 +70,11 @@ import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import FindingsService from '@deepseek-ai/dsh-findings'
 import EvidenceService from '@deepseek-ai/dsh-evidence'
+import ProcessLogService from '@deepseek-ai/dsh-process-log'
 import EngagementService from '@deepseek-ai/dsh-engagement'
 import * as ToolEngagement from '@deepseek-ai/dsh-tool-engagement'
 import * as ToolFindings from '@deepseek-ai/dsh-tool-findings'
+import * as ToolProcessLog from '@deepseek-ai/dsh-tool-process-log'
 import * as ToolScan from '@deepseek-ai/dsh-tool-scan'
 import * as ToolReport from '@deepseek-ai/dsh-tool-report'
 import * as ToolExploit from '@deepseek-ai/dsh-tool-exploit'
@@ -467,6 +469,22 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The findings tool family is the model-facing consumer of the durable findings domain; mutations persist through the storage-domain form.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-process-log',
+    dir: 'tool-process-log',
+    source: 'packages/pentest/tool-process-log/src/index.ts',
+    requires: ['ctx.tools', 'ctx.processLog'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(ProcessLogService)
+      await ctx.plugin(ToolProcessLog)
+    },
+    note:
+      'The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-scan',

@@ -248,7 +248,8 @@ describe('the shipped Web composition', () => {
         'engagement_close', 'engagement_get', 'engagement_pause', 'engagement_resume',
         'engagement_set_phase', 'engagement_start',
         'exploit_run', 'findings_create', 'findings_delete', 'findings_get', 'findings_list',
-        'findings_update', 'recon_dns', 'recon_whois', 'report_generate', 'scan_http',
+        'findings_update', 'process_log_get', 'process_log_list', 'recon_dns', 'recon_whois',
+        'report_generate', 'scan_http',
         'scan_screenshot', 'scan_tcp_ports', 'session_event_read', 'session_event_search',
         'session_event_trace', 'session_search', 'session_trace',
       ])
