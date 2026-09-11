@@ -34,8 +34,9 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-engagement` | `engagement_close`, `engagement_get`, `engagement_pause`, `engagement_resume`, `engagement_set_phase`, `engagement_start` | `ctx.tools`, `ctx.engagement` | `tool/call`, `tool/result` | - | The engagement tools drive the lifecycle: start/get/set-phase/close. Advancing the phase unlocks each later stage; the rules-of-engagement guard still gates every phase tool by scope and phase. |
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_pending`, `findings_refute`, `findings_update`, `findings_verify` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain: mutations persist through the storage-domain form, a verification is refused unless the evidence store holds every reference it cites, and the family contributes the pending-conclusions system-prompt section. |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`, `process_log_list` | `ctx.tools`, `ctx.processLog` | `tool/call`, `tool/result` | - | The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read. |
+| `@deepseek-ai/dsh-tool-report-sections` | `report_section_delete`, `report_section_list`, `report_section_write` | `ctx.tools`, `ctx.reportSections` | `tool/call`, `tool/result` | - | The report-sections tools write and read the durable narrative prose a report is assembled from; the writer subagent fills the sections and the renderer prints them, so the tools carry prose and never formatting. |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`, `scan_screenshot`, `scan_tcp_ports` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target. |
-| `@deepseek-ai/dsh-tool-report` | `report_generate`, `report_validate` | `ctx.tools`, `ctx.findings`, `ctx.evidence` | `tool/call`, `tool/result` | - | The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header. |
+| `@deepseek-ai/dsh-tool-report` | `report_generate`, `report_validate` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.reportSections (opportunistic)` | `tool/call`, `tool/result` | - | The report tool checks the report contract, then renders the durable findings, evidence, and narrative sections as a Chinese-language Word (.docx) report file; it reads the engagement name and the unproved-claim policy opportunistically for the header and the gate. |
 | `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The exploit tool runs a shell command over the pentest runtime seam; the rules-of-engagement guard gates phase and scope, and a pre-execute listener pauses every exploit call for operator approval. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
@@ -1941,6 +1942,110 @@ Source: [`packages/pentest/tool-process-log/src/index.ts`](../packages/pentest/t
 
 The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read.
 
+<a id="deepseek-aidsh-tool-report-sections"></a>
+
+## `@deepseek-ai/dsh-tool-report-sections`
+
+### `report_section_delete`
+
+删除报告的一个叙述章节。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "要删除的章节。",
+      "enum": [
+        "executive-summary",
+        "risk-rating-rationale",
+        "business-impact",
+        "remediation-priority",
+        "finding-narrative"
+      ]
+    },
+    "findingId": {
+      "type": "string",
+      "description": "结论 id；仅 finding-narrative 需要。"
+    }
+  },
+  "required": [
+    "section"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-report-sections/src/index.ts`](../packages/pentest/tool-report-sections/src/index.ts)
+
+### `report_section_list`
+
+列出报告已写入的叙述章节，可按章节类型过滤。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "只列出该章节。",
+      "enum": [
+        "executive-summary",
+        "risk-rating-rationale",
+        "business-impact",
+        "remediation-priority",
+        "finding-narrative"
+      ]
+    }
+  }
+}
+```
+
+Source: [`packages/pentest/tool-report-sections/src/index.ts`](../packages/pentest/tool-report-sections/src/index.ts)
+
+### `report_section_write`
+
+写入报告的一个叙述章节（覆盖该章节此前的文字）。章节：executive-summary=执行摘要、risk-rating-rationale=风险定级依据、business-impact=业务影响、remediation-priority=修复优先级；finding-narrative=逐条结论叙述，写入时必须用 findingId 指明结论。只写叙述文字，不要写表格或排版——渲染器负责格式。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "要写入的章节。",
+      "enum": [
+        "executive-summary",
+        "risk-rating-rationale",
+        "business-impact",
+        "remediation-priority",
+        "finding-narrative"
+      ]
+    },
+    "findingId": {
+      "type": "string",
+      "description": "结论 id；仅 finding-narrative 需要。"
+    },
+    "body": {
+      "type": "string",
+      "description": "章节正文（使用中文）。"
+    },
+    "author": {
+      "type": "string",
+      "description": "撰写者标识（可选）。"
+    }
+  },
+  "required": [
+    "section",
+    "body"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-report-sections/src/index.ts`](../packages/pentest/tool-report-sections/src/index.ts)
+
+The report-sections tools write and read the durable narrative prose a report is assembled from; the writer subagent fills the sections and the renderer prints them, so the tools carry prose and never formatting.
+
 <a id="deepseek-aidsh-tool-scan"></a>
 
 ## `@deepseek-ai/dsh-tool-scan`
@@ -2061,7 +2166,7 @@ Source: [`packages/pentest/tool-report/src/index.ts`](../packages/pentest/tool-r
 
 Source: [`packages/pentest/tool-report/src/index.ts`](../packages/pentest/tool-report/src/index.ts)
 
-The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header.
+The report tool checks the report contract, then renders the durable findings, evidence, and narrative sections as a Chinese-language Word (.docx) report file; it reads the engagement name and the unproved-claim policy opportunistically for the header and the gate.
 
 <a id="deepseek-aidsh-tool-exploit"></a>
 

@@ -71,10 +71,12 @@ import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import FindingsService from '@deepseek-ai/dsh-findings'
 import EvidenceService from '@deepseek-ai/dsh-evidence'
 import ProcessLogService from '@deepseek-ai/dsh-process-log'
+import ReportSectionsService from '@deepseek-ai/dsh-report-sections'
 import EngagementService from '@deepseek-ai/dsh-engagement'
 import * as ToolEngagement from '@deepseek-ai/dsh-tool-engagement'
 import * as ToolFindings from '@deepseek-ai/dsh-tool-findings'
 import * as ToolProcessLog from '@deepseek-ai/dsh-tool-process-log'
+import * as ToolReportSections from '@deepseek-ai/dsh-tool-report-sections'
 import * as ToolScan from '@deepseek-ai/dsh-tool-scan'
 import * as ToolReport from '@deepseek-ai/dsh-tool-report'
 import * as ToolExploit from '@deepseek-ai/dsh-tool-exploit'
@@ -488,6 +490,22 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read.',
   },
   {
+    pkg: '@deepseek-ai/dsh-tool-report-sections',
+    dir: 'tool-report-sections',
+    source: 'packages/pentest/tool-report-sections/src/index.ts',
+    requires: ['ctx.tools', 'ctx.reportSections'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(ReportSectionsService)
+      await ctx.plugin(ToolReportSections)
+    },
+    note:
+      'The report-sections tools write and read the durable narrative prose a report is assembled from; the writer subagent fills the sections and the renderer prints them, so the tools carry prose and never formatting.',
+  },
+  {
     pkg: '@deepseek-ai/dsh-tool-scan',
     dir: 'tool-scan',
     source: 'packages/pentest/tool-scan/src/index.ts',
@@ -509,7 +527,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-report',
     dir: 'tool-report',
     source: 'packages/pentest/tool-report/src/index.ts',
-    requires: ['ctx.tools', 'ctx.findings', 'ctx.evidence'],
+    requires: ['ctx.tools', 'ctx.findings', 'ctx.evidence', 'ctx.reportSections (opportunistic)'],
     writes: ['tool/call', 'tool/result'],
     async mount(ctx) {
       await ctx.plugin(Storage)
@@ -517,10 +535,11 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(StorageDomain, { backend: 'json' })
       await ctx.plugin(FindingsService)
       await ctx.plugin(EvidenceService)
+      await ctx.plugin(ReportSectionsService)
       await ctx.plugin(ToolReport)
     },
     note:
-      'The report tool renders the durable findings and evidence stores as a Chinese-language Word (.docx) report file; it reads the engagement name opportunistically for the header.',
+      'The report tool checks the report contract, then renders the durable findings, evidence, and narrative sections as a Chinese-language Word (.docx) report file; it reads the engagement name and the unproved-claim policy opportunistically for the header and the gate.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-exploit',
