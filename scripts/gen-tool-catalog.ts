@@ -527,7 +527,10 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-report',
     dir: 'tool-report',
     source: 'packages/pentest/tool-report/src/index.ts',
-    requires: ['ctx.tools', 'ctx.findings', 'ctx.evidence', 'ctx.reportSections (opportunistic)'],
+    requires: [
+      'ctx.tools', 'ctx.findings', 'ctx.evidence', 'ctx.reportSections (opportunistic)',
+      'ctx.processLog (opportunistic)',
+    ],
     writes: ['tool/call', 'tool/result'],
     async mount(ctx) {
       await ctx.plugin(Storage)
@@ -536,10 +539,11 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(FindingsService)
       await ctx.plugin(EvidenceService)
       await ctx.plugin(ReportSectionsService)
+      await ctx.plugin(ProcessLogService)
       await ctx.plugin(ToolReport)
     },
     note:
-      'The report tool checks the report contract, then renders the durable findings, evidence, and narrative sections as a Chinese-language Word (.docx) report file; it reads the engagement name and the unproved-claim policy opportunistically for the header and the gate.',
+      'The report tool checks the report contract, then renders the durable findings, evidence, narrative sections, and the process timeline as a Chinese-language Word (.docx) report file; it reads the engagement name and the unproved-claim policy opportunistically for the header and the gate.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-exploit',

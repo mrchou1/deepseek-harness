@@ -5964,6 +5964,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-action-policy':
+        specifier: workspace:^
+        version: link:../action-policy
       '@deepseek-ai/dsh-engagement':
         specifier: workspace:^
         version: link:../engagement
@@ -5976,6 +5979,9 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-process-log':
+        specifier: workspace:^
+        version: link:../process-log
       '@deepseek-ai/dsh-report-sections':
         specifier: workspace:^
         version: link:../report-sections

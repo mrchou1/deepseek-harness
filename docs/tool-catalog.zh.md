@@ -38,7 +38,7 @@
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`、`process_log_list` | `ctx.tools`、`ctx.processLog` | `tool/call`、`tool/result` | - | 过程台账工具读取「交战规则策略裁定过的每个调用」的持久台账；台账本身在宿主平面写入，因此这些工具只读。 |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`、`scan_screenshot`、`scan_tcp_ports` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | 扫描工具家族消费渗透测试运行时 seam；缺少扫描器二进制文件会让调用在执行时失败。scan_http 把请求包与响应包捕获为证据，scan_screenshot 记录无头浏览器图像。交战规则护栏对目标进行门控。 |
 | `@deepseek-ai/dsh-tool-report-sections` | `report_section_delete`、`report_section_list`、`report_section_write` | `ctx.tools`、`ctx.reportSections` | `tool/call`、`tool/result` | - | 报告章节工具读写报告赖以装配的持久化叙述文字：由撰写子代理填充章节、由渲染器打印，因此这些工具只承载文字，从不承载排版。 |
-| `@deepseek-ai/dsh-tool-report` | `report_generate`、`report_validate` | `ctx.tools`、`ctx.findings`、`ctx.evidence`、`ctx.reportSections（顺带）` | `tool/call`、`tool/result` | - | 报告工具先校验报告契约，再把持久化的发现、证据与叙述章节渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称与未验证结论策略，分别用于页眉与闸门。 |
+| `@deepseek-ai/dsh-tool-report` | `report_generate`、`report_validate` | `ctx.tools`、`ctx.findings`、`ctx.evidence`、`ctx.reportSections（顺带）`、`ctx.processLog（顺带）` | `tool/call`、`tool/result` | - | 报告工具先校验报告契约，再把持久化的发现、证据、叙述章节与过程时间线渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称与未验证结论策略，分别用于页眉与闸门。 |
 | `@deepseek-ai/dsh-tool-exploit` | `exploit_run` | `ctx.tools`、`ctx.pentest`、`ctx.evidence` | `tool/call`、`tool/result` | - | exploit 工具通过渗透测试运行时 seam 运行 shell 命令；交战规则护栏对阶段与范围进行门控，pre-execute 监听器会暂停每次 exploit 调用以等待操作者审批。 |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`、`ctx.agents`、`ctx.skills` | `tool/call`、`tool/result`、`user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`、`session_event_search`、`session_event_trace`、`session_search`、`session_trace` | `ctx.tools`、`ctx.systemPrompt`、`ctx.sessionQuery`、`a calling Agent for workspace authority` | `tool/call`、`tool/result` | - | 这 5 个只读工具会隐藏提供方游标，并根据不可变的调用 agent 会话为每个结果授权。该包需要选择启用；需要强制截止时间或限制行内输出的组合还会挂载通用超时或 spill 策略。 |
@@ -2178,7 +2178,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 来源：[`packages/pentest/tool-report/src/index.ts`](../packages/pentest/tool-report/src/index.ts)
 
-报告工具先校验报告契约，再把持久化的发现、证据与叙述章节渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称与未验证结论策略，分别用于页眉与闸门。
+报告工具先校验报告契约，再把持久化的发现、证据、叙述章节与过程时间线渲染为中文 Word（.docx）报告文件；它会顺带读取交战名称与未验证结论策略，分别用于页眉与闸门。
 
 <a id="deepseek-aidsh-tool-exploit"></a>
 
