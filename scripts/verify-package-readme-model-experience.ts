@@ -38,6 +38,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
   'packages/pentest/evidence': 'The domain service owns durable evidence records; the recon/scan/exploit tools own any model-visible projection of the reference.',
   'packages/pentest/findings': 'The domain service owns durable finding records; the findings and report tools own any model-visible projection.',
   'packages/pentest/coverage-ledger': 'The domain service owns durable coverage cells; the coverage tools and the report own any model-visible projection.',
+  'packages/pentest/playbook-ledger': 'The domain service owns durable playbook entries, versions, and proposals; the playbook tools and the skill provider own any model-visible projection.',
   'packages/pentest/process-log': 'The domain service owns durable process rows; the process-log and report tools own any model-visible projection.',
   'packages/pentest/report-sections': 'The domain service owns durable narrative sections; the report-sections and report tools own any model-visible projection.',
 }

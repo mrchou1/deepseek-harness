@@ -72,11 +72,13 @@ import FindingsService from '@deepseek-ai/dsh-findings'
 import EvidenceService from '@deepseek-ai/dsh-evidence'
 import ProcessLogService from '@deepseek-ai/dsh-process-log'
 import CoverageService from '@deepseek-ai/dsh-coverage-ledger'
+import PlaybookService from '@deepseek-ai/dsh-playbook-ledger'
 import ReportSectionsService from '@deepseek-ai/dsh-report-sections'
 import EngagementService from '@deepseek-ai/dsh-engagement'
 import * as ToolEngagement from '@deepseek-ai/dsh-tool-engagement'
 import * as ToolFindings from '@deepseek-ai/dsh-tool-findings'
 import * as ToolCoverage from '@deepseek-ai/dsh-tool-coverage'
+import * as ToolPlaybook from '@deepseek-ai/dsh-tool-playbook'
 import * as ToolProcessLog from '@deepseek-ai/dsh-tool-process-log'
 import * as ToolReportSections from '@deepseek-ai/dsh-tool-report-sections'
 import * as ToolScan from '@deepseek-ai/dsh-tool-scan'
@@ -511,6 +513,27 @@ const TOOL_PACKAGES: ToolPackage[] = [
     /* jscpd:ignore-end */
     note:
       'The coverage tools read the completeness matrix and settle a cell the engagement will not attempt; attempts themselves are projected from the process ledger, so these tools carry decisions and never invent one.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-playbook',
+    dir: 'tool-playbook',
+    source: 'packages/pentest/tool-playbook/src/index.ts',
+    requires: ['ctx.tools', 'ctx.playbook', 'ctx.coverage', 'ctx.findings', 'ctx.engagement', 'ctx.approval'],
+    writes: ['tool/call', 'tool/result', 'approval/asked', 'approval/decided on a publication'],
+    // The storage-and-service boot every domain-backed family repeats; the
+    // shared extraction is tracked as the pentest duplication debt.
+    /* jscpd:ignore-start */
+    async mount(ctx) {
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: resolve(root, '.tmp/tool-catalog/storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(EngagementService)
+      await ctx.plugin(PlaybookService)
+      await ctx.plugin(ToolPlaybook)
+    },
+    /* jscpd:ignore-end */
+    note:
+      'publishing a playbook version is refused unless the approval seam grants it, so the five tools read and propose knowledge and only an operator approval makes it taught.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-report-sections',

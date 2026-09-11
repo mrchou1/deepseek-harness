@@ -35,6 +35,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-findings` | `findings_create`, `findings_delete`, `findings_get`, `findings_list`, `findings_pending`, `findings_refute`, `findings_update`, `findings_verify` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The findings tool family is the model-facing consumer of the durable findings domain: mutations persist through the storage-domain form, a verification is refused unless the evidence store holds every reference it cites, and the family contributes the pending-conclusions system-prompt section. |
 | `@deepseek-ai/dsh-tool-process-log` | `process_log_get`, `process_log_list` | `ctx.tools`, `ctx.processLog` | `tool/call`, `tool/result` | - | The process-log tools read the durable ledger of calls the rules-of-engagement policy judged; the ledger itself is written host-plane, so these tools only read. |
 | `@deepseek-ai/dsh-tool-coverage` | `coverage_gaps`, `coverage_list`, `coverage_mark` | `ctx.tools`, `ctx.coverage` | `tool/call`, `tool/result` | - | The coverage tools read the completeness matrix and settle a cell the engagement will not attempt; attempts themselves are projected from the process ledger, so these tools carry decisions and never invent one. |
+| `@deepseek-ai/dsh-tool-playbook` | `playbook_list`, `playbook_proposals`, `playbook_propose`, `playbook_publish`, `playbook_reject` | `ctx.tools`, `ctx.playbook`, `ctx.coverage`, `ctx.findings`, `ctx.engagement`, `ctx.approval` | `tool/call`, `tool/result`, `approval/asked`, `approval/decided on a publication` | - | publishing a playbook version is refused unless the approval seam grants it, so the five tools read and propose knowledge and only an operator approval makes it taught. |
 | `@deepseek-ai/dsh-tool-report-sections` | `report_section_delete`, `report_section_list`, `report_section_write` | `ctx.tools`, `ctx.reportSections` | `tool/call`, `tool/result` | - | The report-sections tools write and read the durable narrative prose a report is assembled from; the writer subagent fills the sections and the renderer prints them, so the tools carry prose and never formatting. |
 | `@deepseek-ai/dsh-tool-scan` | `scan_http`, `scan_screenshot`, `scan_tcp_ports` | `ctx.tools`, `ctx.pentest`, `ctx.evidence` | `tool/call`, `tool/result` | - | The scan tool family consumes the pentest runtime seam; a missing scanner binary fails the call at execution time. scan_http captures the request and response packets as evidence, and scan_screenshot records a headless-browser image. The rules-of-engagement guard gates the target. |
 | `@deepseek-ai/dsh-tool-report` | `report_generate`, `report_validate` | `ctx.tools`, `ctx.findings`, `ctx.evidence`, `ctx.reportSections (opportunistic)`, `ctx.processLog (opportunistic)` | `tool/call`, `tool/result` | - | The report tool checks the report contract, then renders the durable findings, evidence, narrative sections, and the process timeline as a Chinese-language Word (.docx) report file; it reads the engagement name and the unproved-claim policy opportunistically for the header and the gate. |
@@ -2075,6 +2076,296 @@ Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool
 Source: [`packages/pentest/tool-coverage/src/index.ts`](../packages/pentest/tool-coverage/src/index.ts)
 
 The coverage tools read the completeness matrix and settle a cell the engagement will not attempt; attempts themselves are projected from the process ledger, so these tools carry decisions and never invent one.
+
+<a id="deepseek-aidsh-tool-playbook"></a>
+
+## `@deepseek-ai/dsh-tool-playbook`
+
+### `playbook_list`
+
+列出已发布的 playbook 条目（手法方法论），并在读取前按覆盖台账与结论台账刷新每条的命中数与已验证结论数，据此给出置信度与是否被降权。默认不返回已退役条目；想读历史就传 includeRetired 或 standing="retired"。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "scene": {
+      "type": "string",
+      "description": "只看该场景的条目。",
+      "enum": [
+        "web",
+        "api",
+        "ad",
+        "cloud",
+        "internal"
+      ]
+    },
+    "standing": {
+      "type": "string",
+      "description": "只看该状态的条目（active=有效、demoted=降权、retired=已退役）。",
+      "enum": [
+        "active",
+        "demoted",
+        "retired"
+      ]
+    },
+    "technique": {
+      "type": "string",
+      "description": "只看声明了该手法类别的条目。",
+      "enum": [
+        "local",
+        "file-ops",
+        "recon",
+        "scan",
+        "web-probe",
+        "web-fuzz",
+        "exploit",
+        "credential-attack",
+        "credential-dump",
+        "lateral-movement",
+        "persistence",
+        "exfiltration",
+        "dos",
+        "unknown"
+      ]
+    },
+    "includeRetired": {
+      "type": "boolean",
+      "description": "是否一并返回已退役条目。"
+    }
+  }
+}
+```
+
+Source: [`packages/pentest/tool-playbook/src/index.ts`](../packages/pentest/tool-playbook/src/index.ts)
+
+### `playbook_proposals`
+
+列出 playbook 提案：待运维方批准的、已发布的，以及仍在可见窗口内的被拒提案（带拒绝理由）。被拒提案在窗口结束前保持可见，窗口内再次提出同样内容会被拒绝——先读懂拒绝理由再改提案。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entryId": {
+      "type": "string",
+      "description": "只看该条目的提案。"
+    },
+    "status": {
+      "type": "string",
+      "description": "只看该状态的提案。",
+      "enum": [
+        "pending",
+        "published",
+        "rejected"
+      ]
+    }
+  }
+}
+```
+
+Source: [`packages/pentest/tool-playbook/src/index.ts`](../packages/pentest/tool-playbook/src/index.ts)
+
+### `playbook_propose`
+
+记录一条 playbook 变更提案（create/revise/retire）。提案不是知识：它不会立刻生效，必须由运维方批准后才发布成新版本。create 与 revise 必须给出完整内容（title、scene、techniques、steps 必填，其余可省略）：revise 整条替换内容而不是字段合并，因此未给的字段会按默认值落库，差异也按此记录。retire 不得给内容。理由与证据来源必填；相对上一版的差异由台账自动计算并记录。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entryId": {
+      "type": "string",
+      "description": "条目标识（小写连字符）。"
+    },
+    "kind": {
+      "type": "string",
+      "description": "提案种类。",
+      "enum": [
+        "create",
+        "revise",
+        "retire"
+      ]
+    },
+    "provenance": {
+      "type": "string",
+      "description": "知识来源：expert=专家导入、engagement=本次交战蒸馏、imported=外部包导入。",
+      "enum": [
+        "expert",
+        "engagement",
+        "imported"
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "description": "为什么值得发布这条变更。"
+    },
+    "proposedBy": {
+      "type": "string",
+      "description": "提出者（角色或操作者）。"
+    },
+    "sources": {
+      "type": "array",
+      "description": "提案依据：覆盖单元格、结论 id、会话引用等。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "title": {
+      "type": "string",
+      "description": "一行摘要（create/revise 必填）。"
+    },
+    "scene": {
+      "type": "string",
+      "description": "适用场景（create/revise 必填）。",
+      "enum": [
+        "web",
+        "api",
+        "ad",
+        "cloud",
+        "internal"
+      ]
+    },
+    "techniques": {
+      "type": "array",
+      "description": "声明的手法类别（create/revise 必填，至少一项）；这些类别会并入覆盖义务。",
+      "items": {
+        "type": "string",
+        "enum": [
+          "local",
+          "file-ops",
+          "recon",
+          "scan",
+          "web-probe",
+          "web-fuzz",
+          "exploit",
+          "credential-attack",
+          "credential-dump",
+          "lateral-movement",
+          "persistence",
+          "exfiltration",
+          "dos",
+          "unknown"
+        ]
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "按顺序的步骤（create/revise 必填）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "preconditions": {
+      "type": "array",
+      "description": "前置条件。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decisionPoints": {
+      "type": "array",
+      "description": "需要判断的分叉点。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidenceRequirements": {
+      "type": "array",
+      "description": "证明该手法奏效所必须取得的证据。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "remediation": {
+      "type": "string",
+      "description": "修复建议。"
+    },
+    "references": {
+      "type": "array",
+      "description": "外部参考。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confidence": {
+      "type": "string",
+      "description": "声明的置信度（默认 medium）。",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  },
+  "required": [
+    "entryId",
+    "kind",
+    "provenance",
+    "rationale",
+    "proposedBy"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-playbook/src/index.ts`](../packages/pentest/tool-playbook/src/index.ts)
+
+### `playbook_publish`
+
+把一条待批准提案发布成下一版：写入不可变版本记录（来源、批准者、理由、依据与相对上一版的差异）并让该版本开始教给模型。此调用被审批缝拦下，只有运维方放行后才真正执行；没有审批通道、没有会话或审批策略为 never 时一律被拒，因此未经批准的提案无法生效。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "proposalId": {
+      "type": "string",
+      "description": "要发布的提案 id。"
+    },
+    "approvedBy": {
+      "type": "string",
+      "description": "批准者标识（默认 operator：审批缝只在人工放行后才让本调用执行）。"
+    }
+  },
+  "required": [
+    "proposalId"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-playbook/src/index.ts`](../packages/pentest/tool-playbook/src/index.ts)
+
+### `playbook_reject`
+
+拒绝一条待批准提案并记录理由。被拒提案不会生效，但在可见窗口内保持可读：给出具体理由，下一次蒸馏才不会重提同一个错误教训。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "proposalId": {
+      "type": "string",
+      "description": "要拒绝的提案 id。"
+    },
+    "reason": {
+      "type": "string",
+      "description": "拒绝理由（会被后续蒸馏读到）。"
+    },
+    "decidedBy": {
+      "type": "string",
+      "description": "决策者（默认 operator）。"
+    }
+  },
+  "required": [
+    "proposalId",
+    "reason"
+  ]
+}
+```
+
+Source: [`packages/pentest/tool-playbook/src/index.ts`](../packages/pentest/tool-playbook/src/index.ts)
+
+publishing a playbook version is refused unless the approval seam grants it, so the five tools read and propose knowledge and only an operator approval makes it taught.
 
 <a id="deepseek-aidsh-tool-report-sections"></a>
 
